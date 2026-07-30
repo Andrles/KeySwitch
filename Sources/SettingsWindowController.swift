@@ -25,6 +25,7 @@ final class SettingsWindowController: NSWindowController,
     private let appTable = NSTableView()
     private let ignoredWordsField = NSTextField()
     private let accessLabel = NSTextField(labelWithString: "")
+    private let versionLabel = NSTextField(labelWithString: AppVersion.display)
     private var accessButton: NSButton!
     private let countLabel = NSTextField(labelWithString: "")
     private var spellCheckButton: NSButton!
@@ -142,6 +143,10 @@ final class SettingsWindowController: NSWindowController,
         accessRow.orientation = .horizontal
         accessRow.alignment = .centerY
         accessRow.spacing = 8
+        versionLabel.textColor = .tertiaryLabelColor
+        versionLabel.font = .systemFont(ofSize: 11)
+        versionLabel.toolTip = "Сборка \(AppVersion.build)"
+        accessRow.addArrangedSubview(versionLabel)
         let accessSpacer = NSView()
         accessSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
         accessRow.addArrangedSubview(accessSpacer)

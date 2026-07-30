@@ -108,6 +108,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                                     keyEquivalent: "")
         permission.image = menuSymbol("hand.raised")
         menu.addItem(permission)
+        let version = NSMenuItem(title: AppVersion.display,
+                                 action: nil,
+                                 keyEquivalent: "")
+        version.isEnabled = false
+        version.toolTip = "Сборка \(AppVersion.build)"
+        menu.addItem(version)
         menu.addItem(.separator())
         let quit = NSMenuItem(title: "Завершить KeySwitch",
                               action: #selector(NSApplication.terminate(_:)),

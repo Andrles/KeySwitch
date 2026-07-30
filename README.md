@@ -8,10 +8,11 @@
 [![Swift](https://img.shields.io/badge/Swift-native-F05138?logo=swift&logoColor=white)](#сборка-из-исходного-кода)
 [![Offline](https://img.shields.io/badge/privacy-offline-16A34A)](#приватность)
 [![Version](https://img.shields.io/badge/version-2.1.2-6D5DFB)](CHANGELOG.md)
+[![Download](https://img.shields.io/badge/download-latest_release-2563EB?logo=github)](https://github.com/Andrles/KeySwitch/releases/latest)
 
 **KeySwitch автоматически исправляет слова, набранные в неверной русской или английской раскладке.**
 
-[English](README.en.md) · [Возможности](#возможности) · [Установка](#установка) · [Сборка](#сборка-из-исходного-кода)
+[English](README.en.md) · [Скачать](https://github.com/Andrles/KeySwitch/releases/latest) · [Возможности](#возможности) · [Установка](#установка) · [Решение проблем](#решение-проблем)
 
 </div>
 
@@ -38,6 +39,8 @@
 | `Alexandr` | `Alexander` при включённом автоисправлении |
 
 ## Установка
+
+> [Скачать последнюю версию KeySwitch](https://github.com/Andrles/KeySwitch/releases/latest)
 
 ### Через Терминал
 
@@ -74,16 +77,41 @@
 
 ## Системные требования
 
-- macOS 13 Ventura или новее;
-- Mac с Apple Silicon или Intel;
-- разрешение «Универсальный доступ».
+| Компонент | Требование |
+|---|---|
+| macOS | 13 Ventura или новее |
+| Процессор | Apple Silicon или Intel |
+| Разрешение | «Универсальный доступ» |
+| Подключение к интернету | Не требуется для работы |
+
+## Решение проблем
+
+### KeySwitch запущен, но не исправляет текст
+
+1. Откройте **Системные настройки → Конфиденциальность и безопасность → Универсальный доступ**.
+2. Убедитесь, что доступ для KeySwitch включён.
+3. Если разрешение уже включено, выключите его, включите снова и перезапустите KeySwitch.
+4. Проверьте, что активное приложение не добавлено в исключения.
+
+### macOS сообщает, что приложение получено из неизвестного источника
+
+Откройте **Системные настройки → Конфиденциальность и безопасность** и подтвердите
+запуск KeySwitch. Текущие сборки подписаны ad-hoc и пока не нотаризованы Apple.
+
+### Как временно отключить автоматическое переключение
+
+Нажмите иконку KeySwitch в строке меню и выберите **Приостановить автоматику**.
+
+Если проблема сохраняется, создайте
+[отчёт об ошибке](https://github.com/Andrles/KeySwitch/issues/new) и укажите
+версию macOS, версию KeySwitch, исходное слово и ожидаемый результат.
 
 ## Сборка из исходного кода
 
 Понадобятся Xcode Command Line Tools.
 
 ```sh
-git clone <URL-вашего-репозитория>
+git clone https://github.com/Andrles/KeySwitch.git
 cd KeySwitch
 ./scripts/test.sh
 ./scripts/build.sh

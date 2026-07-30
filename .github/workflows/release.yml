@@ -24,10 +24,10 @@ jobs:
         run: |
           cp "$(find build -maxdepth 1 -name 'KeySwitch-*.pkg' -print -quit)" build/KeySwitch.pkg
           cp "$(find build -maxdepth 1 -name 'KeySwitch-*.zip' -print -quit)" build/KeySwitch.zip
-      - name: Create draft release
+      - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          draft: true
+          draft: false
           generate_release_notes: true
           files: |
             build/KeySwitch-*.zip

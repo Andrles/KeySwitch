@@ -13,7 +13,10 @@ jobs:
     runs-on: macos-14
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+      
+      - name: Make scripts executable
+        run: chmod +x scripts/*.sh
 
       - name: Test language engine
         run: ./scripts/test.sh

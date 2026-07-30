@@ -8,6 +8,7 @@ sdk_path="$(xcrun --sdk macosx --show-sdk-path)"
 export CLANG_MODULE_CACHE_PATH="$build_dir/module-cache-keyswitch"
 export SWIFT_MODULE_CACHE_PATH="$build_dir/module-cache-keyswitch"
 
+rm -rf "$app_dir"
 mkdir -p "$app_dir/Contents/MacOS" "$app_dir/Contents/Resources" "$build_dir/arch"
 cp "$project_dir/Resources/Info.plist" "$app_dir/Contents/Info.plist"
 cp "$project_dir/Resources/PkgInfo" "$app_dir/Contents/PkgInfo"

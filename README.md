@@ -7,7 +7,7 @@
 [![macOS 13+](https://img.shields.io/badge/macOS-13%2B-111827?logo=apple)](#системные-требования)
 [![Swift](https://img.shields.io/badge/Swift-native-F05138?logo=swift&logoColor=white)](#сборка-из-исходного-кода)
 [![Offline](https://img.shields.io/badge/privacy-offline-16A34A)](#приватность)
-[![Version](https://img.shields.io/badge/version-2.0.2-6D5DFB)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-2.1.0-6D5DFB)](CHANGELOG.md)
 
 **KeySwitch автоматически исправляет слова, набранные в неверной русской или английской раскладке.**
 
@@ -38,6 +38,19 @@
 | `Alexandr` | `Alexander` при включённом автоисправлении |
 
 ## Установка
+
+### Через Терминал
+
+```sh
+/bin/zsh -c "$(curl -fsSL https://raw.githubusercontent.com/Andrles/KeySwitch/main/scripts/install.sh)"
+```
+
+Команда загружает `KeySwitch.pkg` из последнего опубликованного GitHub Release,
+запрашивает пароль администратора для установки в `/Applications` и запускает
+приложение. Перед выполнением скрипт можно
+[просмотреть в репозитории](scripts/install.sh).
+
+### Вручную
 
 1. Скачайте последний `KeySwitch-*.pkg` или `KeySwitch-*.zip` со страницы **Releases**.
 2. Переместите KeySwitch в папку `/Applications`, если используете ZIP.
@@ -96,4 +109,3 @@ docs/         графика и документация
 ## Лицензия
 
 Исходный код опубликован для ознакомления. Все права защищены — см. [LICENSE.md](LICENSE.md).
-

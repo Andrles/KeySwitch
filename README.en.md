@@ -19,6 +19,18 @@
 
 ## Installation
 
+### Terminal
+
+```sh
+/bin/zsh -c "$(curl -fsSL https://raw.githubusercontent.com/Andrles/KeySwitch/main/scripts/install.sh)"
+```
+
+The command downloads `KeySwitch.pkg` from the latest published GitHub Release,
+asks for an administrator password to install it into `/Applications`, and
+launches the app. You can [review the script](scripts/install.sh) before running it.
+
+### Manual installation
+
 1. Download the latest `KeySwitch-*.pkg` or `KeySwitch-*.zip` from **Releases**.
 2. Move KeySwitch to `/Applications` when using the ZIP archive.
 3. Launch the app.
@@ -57,4 +69,3 @@ Bug reports and focused pull requests are welcome. See [CONTRIBUTING.md](CONTRIB
 ## License
 
 Source available, all rights reserved. See [LICENSE.md](LICENSE.md).
-

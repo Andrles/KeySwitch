@@ -10,22 +10,20 @@ permissions:
 jobs:
   release:
     runs-on: macos-14
-
     steps:
       - uses: actions/checkout@v5
-
       - name: Make scripts executable
         run: chmod +x scripts/*.sh
-
       - name: Test
         run: ./scripts/test.sh
-
       - name: Build
         run: ./scripts/build.sh
-
       - name: Package
         run: ./scripts/package.sh
-
+      - name: Create stable download names
+        run: |
+          cp "$(find build -maxdepth 1 -name 'KeySwitch-*.pkg' -print -quit)" build/KeySwitch.pkg
+          cp "$(find build -maxdepth 1 -name 'KeySwitch-*.zip' -print -quit)" build/KeySwitch.zip
       - name: Create draft release
         uses: softprops/action-gh-release@v2
         with:
@@ -35,3 +33,5 @@ jobs:
             build/KeySwitch-*.zip
             build/KeySwitch-*.pkg
             build/KeySwitch-*.dmg
+            build/KeySwitch.pkg
+            build/KeySwitch.zip

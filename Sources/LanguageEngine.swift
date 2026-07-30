@@ -38,7 +38,10 @@ struct LanguageEngine {
     than that the their them then there these they thing think this time to try
     two up use user very want was way we well were what when where which who why
     will with word work would write yes you your name english russian palace hi
-    moscow
+    moscow above across against along among around behind below beside between beyond despite
+    during except inside into near onto opposite outside past round since through
+    throughout towards under underneath unlike until upon via within without
+    ahead apart account top owing prior regardless
     """.split(whereSeparator: \.isWhitespace).map(String.init))
 
     private static let russianWords: Set<String> = Set("""
@@ -50,6 +53,15 @@ struct LanguageEngine {
     тоже только ты у уже хорошо хотя чем что чтобы это этот я язык давай немного
     пишем писать английский русского русском английском подобное сделай почему
     первое первый первая первые второе второй вторая вторые может дворец
+    название названии иконка иконку приложение приложении приложением приложения
+    репозиторий репозитория пишу включен включена включено включены включенный
+    включенным включён включена включено включены включённый включённым
+    близ возле вокруг впереди вдоль вместо вне внутри навстречу напротив около
+    во ко кроме между над обо перед передо подо ради сквозь среди через
+    благодаря вопреки ввиду вследствие
+    насчёт несмотря согласно спустя включая исключая начиная помимо посредством
+    путём касательно относительно из-за из-под течение продолжение исключением
+    время связи зависимости направлению
     """.split(whereSeparator: \.isWhitespace).map(String.init))
 
     private static let englishNames: Set<String> = Set("""
@@ -102,6 +114,23 @@ struct LanguageEngine {
     }
 
     func correction(for word: String, ignored: Set<String> = []) -> Correction? {
+        if let correction = correctionForBareWord(word, ignored: ignored) {
+            return correction
+        }
+        let parts = splitOuterPunctuation(from: word)
+        guard (!parts.leading.isEmpty || !parts.trailing.isEmpty),
+              let correction = correctionForBareWord(parts.word, ignored: ignored) else {
+            return nil
+        }
+        return Correction(
+            original: word,
+            replacement: parts.leading + correction.replacement + parts.trailing,
+            language: correction.language
+        )
+    }
+
+    private func correctionForBareWord(_ word: String,
+                                       ignored: Set<String>) -> Correction? {
         let normalized = word.lowercased()
         guard !word.isEmpty, !ignored.contains(normalized) else { return nil }
 
@@ -131,6 +160,23 @@ struct LanguageEngine {
         return nil
     }
 
+    private func splitOuterPunctuation(from token: String)
+        -> (leading: String, word: String, trailing: String) {
+        let punctuation = "`[];',.~{}:\"<>«»„“”‘’()"
+        var word = token
+        var leading = ""
+        var trailing = ""
+        while let first = word.first, punctuation.contains(first) {
+            leading.append(first)
+            word.removeFirst()
+        }
+        while let last = word.last, punctuation.contains(last) {
+            trailing.insert(last, at: trailing.startIndex)
+            word.removeLast()
+        }
+        return (leading, word, trailing)
+    }
+
     func detectedLanguage(for word: String) -> Language? {
         let normalized = word.lowercased()
         let hasLatin = word.unicodeScalars.contains { (0x0041...0x007A).contains(Int($0.value)) }
@@ -154,7 +200,7 @@ struct LanguageEngine {
     private func englishScore(_ word: String) -> Int {
         if Self.englishWords.contains(word) { return 12 }
         if Self.englishNames.contains(word) { return 14 }
-        if systemDictionary.contains(word, language: .english) { return 16 }
+        if word.count > 2, systemDictionary.contains(word, language: .english) { return 16 }
         var score = 0
         let common = ["th", "he", "in", "er", "an", "re", "on", "at", "en", "nd",
                       "tion", "ing", "ed", "ou", "ea", "st", "to", "it", "is"]
@@ -170,7 +216,7 @@ struct LanguageEngine {
     private func russianScore(_ word: String) -> Int {
         if Self.russianWords.contains(word) { return 12 }
         if Self.russianNames.contains(word) { return 14 }
-        if systemDictionary.contains(word, language: .russian) { return 16 }
+        if word.count > 2, systemDictionary.contains(word, language: .russian) { return 16 }
         var score = 0
         let common = ["ст", "но", "то", "на", "ен", "ов", "ни", "ра", "во", "ко",
                       "пр", "по", "ро", "ал", "ль", "ого", "ени", "ать", "ить"]

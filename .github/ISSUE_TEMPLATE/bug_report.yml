@@ -1,0 +1,43 @@
+name: Сообщение об ошибке
+description: Сбой, неверное переключение или проблема интерфейса
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Спасибо за отчёт. Не прикладывайте пароли и приватную переписку.
+  - type: input
+    id: version
+    attributes:
+      label: Версия KeySwitch
+      placeholder: 2.0.2
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: Версия macOS и модель Mac
+    validations:
+      required: true
+  - type: input
+    id: application
+    attributes:
+      label: Приложение, в котором возникла ошибка
+  - type: textarea
+    id: steps
+    attributes:
+      label: Шаги воспроизведения
+    validations:
+      required: true
+  - type: input
+    id: input
+    attributes:
+      label: Введённый текст
+  - type: input
+    id: expected
+    attributes:
+      label: Ожидаемый результат
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Дополнительная информация или crash report

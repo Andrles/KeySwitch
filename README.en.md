@@ -3,7 +3,7 @@
 
   **A native, offline Russian ↔ English keyboard layout assistant for macOS.**
 
-  [Русский](README.md) · [Features](#features) · [Installation](#installation) · [Build](#build-from-source)
+  [Русский](README.md) · [Download](https://github.com/Andrles/KeySwitch/releases/latest) · [Features](#features) · [Installation](#installation) · [Troubleshooting](#troubleshooting)
 </div>
 
 ## Features
@@ -18,6 +18,8 @@
 - Never sends typed text to a remote service.
 
 ## Installation
+
+> [Download the latest KeySwitch release](https://github.com/Andrles/KeySwitch/releases/latest)
 
 ### Terminal
 
@@ -44,16 +46,40 @@ All text processing happens locally. KeySwitch does not make network requests, s
 
 ## Requirements
 
-- macOS 13 Ventura or later;
-- Apple Silicon or Intel Mac;
-- Accessibility permission.
+| Component | Requirement |
+|---|---|
+| macOS | 13 Ventura or later |
+| Processor | Apple Silicon or Intel |
+| Permission | Accessibility |
+| Internet connection | Not required during use |
+
+## Troubleshooting
+
+### KeySwitch is running but does not correct text
+
+1. Open **System Settings → Privacy & Security → Accessibility**.
+2. Make sure KeySwitch is enabled.
+3. If it is already enabled, turn the permission off and on again, then restart KeySwitch.
+4. Make sure the active app is not in the exclusions list.
+
+### macOS reports that the app is from an unidentified developer
+
+Open **System Settings → Privacy & Security** and confirm that you want to launch
+KeySwitch. Current builds use an ad-hoc signature and are not yet notarized.
+
+### Temporarily disable automatic switching
+
+Open the KeySwitch menu bar icon and choose **Pause automatic switching**.
+
+If the problem continues, [open an issue](https://github.com/Andrles/KeySwitch/issues/new)
+and include the macOS version, KeySwitch version, original word, and expected result.
 
 ## Build from source
 
 Install Xcode Command Line Tools, then run:
 
 ```sh
-git clone <YOUR-REPOSITORY-URL>
+git clone https://github.com/Andrles/KeySwitch.git
 cd KeySwitch
 ./scripts/test.sh
 ./scripts/build.sh

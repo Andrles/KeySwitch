@@ -33,7 +33,14 @@ expect(engine.correction(for: "ldjhtw")?.replacement, "дворец", "User test
 expect(engine.correction(for: "vj;tn")?.replacement, "может", "User test: punctuation key ж")
 expect(engine.correction(for: "VJ:TN")?.replacement, "МОЖЕТ", "Shift punctuation key Ж")
 expect(engine.correction(for: "Z")?.replacement, "Я", "User test: one-letter Я")
+expect(engine.correction(for: "d")?.replacement, "в", "User test: one-letter в")
+expect(engine.correction(for: "'d")?.replacement, "'в", "User test: quoted one-letter в")
 expect(engine.correction(for: "Ьщысщц")?.replacement, "Moscow", "User test: Moscow")
+expect(engine.correction(for: "yfpdfybb")?.replacement, "названии", "User test: названии")
+expect(engine.correction(for: "brjyre")?.replacement, "иконку", "User test: иконку")
+expect(engine.correction(for: "gbie")?.replacement, "пишу", "User test: пишу")
+expect(engine.correction(for: "drk.xtyysv")?.replacement, "включенным", "User test: включенным")
+expect(engine.correction(for: "ghbkj;tybtv")?.replacement, "приложением", "User test: приложением")
 expect(engine.spellingSuggestion(for: "Alexandr", language: .english),
        "Alexander",
        "User test: English name spelling")
@@ -46,6 +53,36 @@ expectNil(engine.correction(for: "hi"), "Valid short English stays")
 expectNil(engine.correction(for: "no"), "Valid short English no stays")
 expectNil(engine.correction(for: "palace"), "Valid English palace stays")
 expectNil(engine.correction(for: "ghbdtn", ignored: ["ghbdtn"]), "Ignored word stays")
+
+let russianPrepositions = """
+без близ в во возле вокруг впереди вдоль вместо вне внутри для до за из из-за
+из-под к ко кроме между на над навстречу напротив о об обо около от перед передо
+по под подо при про ради с со сквозь среди у через благодаря вопреки ввиду
+вследствие насчёт несмотря согласно спустя включая исключая начиная помимо
+посредством путём касательно относительно
+""".split(whereSeparator: \.isWhitespace).map(String.init)
+
+for preposition in russianPrepositions {
+    let mistyped = engine.convert(preposition, to: .english)
+    expect(engine.correction(for: mistyped)?.replacement,
+           preposition,
+           "Russian preposition \(preposition) from \(mistyped)")
+}
+
+let englishPrepositions = """
+about above across after against along among around as at before behind below
+beside between beyond by despite down during except for from in inside into near
+of off on onto opposite out outside over past round since than through throughout
+to towards under underneath unlike until up upon via with within without
+""".split(whereSeparator: \.isWhitespace).map(String.init)
+
+for preposition in englishPrepositions {
+    let mistyped = engine.convert(preposition, to: .russian)
+    expect(engine.correction(for: mistyped)?.replacement,
+           preposition,
+           "English preposition \(preposition) from \(mistyped)")
+}
+
 guard engine.detectedLanguage(for: "hello") == .english else {
     fputs("FAIL Detect valid English\n", stderr)
     exit(1)

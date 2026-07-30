@@ -110,9 +110,9 @@ final class KeyboardMonitor {
         }
 
         if let correction = layoutCorrection(for: currentWord) {
-            replaceTypedText(correction, suffix: text)
+            replaceTypedText(correction, suffix: "")
             currentWord = ""
-            return nil
+            return Unmanaged.passUnretained(event)
         }
 
         let spellingParts = splitTrailingPunctuation(from: currentWord)
@@ -127,9 +127,9 @@ final class KeyboardMonitor {
                     replacement: suggestion + spellingParts.trailing,
                     language: language
                 )
-                replaceTypedText(correction, suffix: text)
+                replaceTypedText(correction, suffix: "")
                 currentWord = ""
-                return nil
+                return Unmanaged.passUnretained(event)
             }
             DispatchQueue.main.async { [weak self] in
                 self?.onSpellingIssue?(spellingParts.word, suggestion)
@@ -202,20 +202,7 @@ final class KeyboardMonitor {
     }
 
     private func layoutCorrection(for token: String) -> Correction? {
-        if let correction = engine.correction(for: token, ignored: preferences.ignoredWords) {
-            return correction
-        }
-        let parts = splitTrailingPunctuation(from: token)
-        guard !parts.trailing.isEmpty,
-              let correction = engine.correction(for: parts.word,
-                                                  ignored: preferences.ignoredWords) else {
-            return nil
-        }
-        return Correction(
-            original: token,
-            replacement: correction.replacement + parts.trailing,
-            language: correction.language
-        )
+        engine.correction(for: token, ignored: preferences.ignoredWords)
     }
 
     private func splitTrailingPunctuation(from token: String) -> (word: String, trailing: String) {

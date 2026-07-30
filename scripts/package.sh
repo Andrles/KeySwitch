@@ -24,16 +24,18 @@ ditto -c -k --sequesterRsrc --keepParent "$stage_app" "$zip_output"
 ditto --norsrc --noextattr "$stage_app" "$dmg_root/KeySwitch.app"
 ln -sfn /Applications "$dmg_root/Applications"
 rm -f "$output"
+rm -f "$pkg_output"
+pkgbuild \
+  --root "$payload_root" \
+  --component-plist "$project_dir/Resources/PackageComponents.plist" \
+  --identifier local.keyswitch.installer \
+  --version "$version" \
+  --install-location /Applications \
+  "$pkg_output"
+echo "$pkg_output"
+
 if hdiutil create -volname "KeySwitch" -srcfolder "$dmg_root" -ov -format UDZO "$output"; then
   echo "$output"
 else
-  rm -f "$output" "$pkg_output"
-  pkgbuild \
-    --root "$payload_root" \
-    --component-plist "$project_dir/Resources/PackageComponents.plist" \
-    --identifier local.keyswitch.installer \
-    --version "$version" \
-    --install-location /Applications \
-    "$pkg_output"
-  echo "$pkg_output"
+  rm -f "$output"
 fi

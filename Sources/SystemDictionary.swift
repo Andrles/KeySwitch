@@ -79,6 +79,9 @@ final class SystemDictionary {
     }
 
     private func dictionaryIsAvailable(for language: Language) -> Bool {
+        if ProcessInfo.processInfo.environment["KEYSWITCH_DISABLE_SYSTEM_DICTIONARY"] == "1" {
+            return false
+        }
         if let cached = availability[language] {
             return cached
         }

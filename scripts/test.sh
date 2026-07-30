@@ -6,6 +6,7 @@ sdk_path="$(xcrun --sdk macosx --show-sdk-path)"
 mkdir -p "$project_dir/build/tests"
 export CLANG_MODULE_CACHE_PATH="$project_dir/build/module-cache-keyswitch"
 export SWIFT_MODULE_CACHE_PATH="$project_dir/build/module-cache-keyswitch"
+export KEYSWITCH_DISABLE_SYSTEM_DICTIONARY=1
 xcrun swiftc \
   -sdk "$sdk_path" \
   -framework AppKit \

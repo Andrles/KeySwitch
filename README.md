@@ -7,7 +7,7 @@
 [![macOS 13+](https://img.shields.io/badge/macOS-13%2B-111827?logo=apple)](#системные-требования)
 [![Swift](https://img.shields.io/badge/Swift-native-F05138?logo=swift&logoColor=white)](#сборка-из-исходного-кода)
 [![Offline](https://img.shields.io/badge/privacy-offline-16A34A)](#приватность)
-[![Version](https://img.shields.io/badge/version-2.1.1-6D5DFB)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-2.1.2-6D5DFB)](CHANGELOG.md)
 
 **KeySwitch автоматически исправляет слова, набранные в неверной русской или английской раскладке.**
 

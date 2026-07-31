@@ -1,6 +1,9 @@
 <div align="center">
   <img src="docs/assets/banner.svg" alt="KeySwitch — automatic keyboard layout switching for macOS" width="100%">
 
+  [![Version](https://img.shields.io/badge/version-2.1.3-6D5DFB)](CHANGELOG.md)
+  [![Downloads](https://img.shields.io/github/downloads/Andrles/KeySwitch/total?label=downloads&logo=github&color=2563EB)](https://github.com/Andrles/KeySwitch/releases)
+
   **A native, offline Russian ↔ English keyboard layout assistant for macOS.**
 
   [Русский](README.md) · [Download](https://github.com/Andrles/KeySwitch/releases/latest) · [Features](#features) · [Installation](#installation) · [Troubleshooting](#troubleshooting)

@@ -54,6 +54,23 @@ expectNil(engine.correction(for: "no"), "Valid short English no stays")
 expectNil(engine.correction(for: "palace"), "Valid English palace stays")
 expectNil(engine.correction(for: "ghbdtn", ignored: ["ghbdtn"]), "Ignored word stays")
 
+let boundaryCorrection = Correction(
+    original: "ghbdtn",
+    replacement: "привет",
+    language: .russian
+)
+let boundaryPlan = KeyboardReplacementPlan(
+    correction: boundaryCorrection,
+    replayBoundary: true
+)
+let expectedBoundaryPlan =
+    Array(repeating: KeyboardReplacementStep.backspace, count: 6) +
+    [.insert("привет"), .replayBoundary]
+guard boundaryPlan.steps == expectedBoundaryPlan else {
+    fputs("FAIL Boundary replacement must replay the swallowed separator last\n", stderr)
+    exit(1)
+}
+
 let russianPrepositions = """
 без близ в во возле вокруг впереди вдоль вместо вне внутри для до за из из-за
 из-под к ко кроме между на над навстречу напротив о об обо около от перед передо

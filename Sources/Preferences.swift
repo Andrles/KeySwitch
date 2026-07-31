@@ -1,5 +1,33 @@
 import Foundation
 
+enum SpellingMode: String, CaseIterable {
+    case off
+    case suggestions
+    case autoCorrect
+
+    var displayTitle: String {
+        switch self {
+        case .off: return "Выключена"
+        case .suggestions: return "Подсказки"
+        case .autoCorrect: return "Автоисправление"
+        }
+    }
+}
+
+enum AppTheme: String, CaseIterable {
+    case system
+    case light
+    case dark
+
+    var displayTitle: String {
+        switch self {
+        case .system: return "Системная"
+        case .light: return "Светлая"
+        case .dark: return "Тёмная"
+        }
+    }
+}
+
 enum PreferenceKey {
     static let enabled = "enabled"
     static let playSound = "playSound"
@@ -10,6 +38,10 @@ enum PreferenceKey {
     static let primaryLanguage = "primaryLanguage"
     static let spellChecking = "spellChecking"
     static let spellAutoCorrect = "spellAutoCorrect"
+    static let spellingMode = "spellingMode"
+    static let appTheme = "appTheme"
+    static let automaticallyChecksForUpdates = "automaticallyChecksForUpdates"
+    static let lastUpdateCheck = "lastUpdateCheck"
 }
 
 final class Preferences {
@@ -17,6 +49,9 @@ final class Preferences {
     let defaults = UserDefaults.standard
 
     private init() {
+        let storedSpellingMode = defaults.string(forKey: PreferenceKey.spellingMode)
+        let legacySpellChecking = defaults.object(forKey: PreferenceKey.spellChecking) as? Bool
+        let legacyAutoCorrect = defaults.object(forKey: PreferenceKey.spellAutoCorrect) as? Bool
         defaults.register(defaults: [
             PreferenceKey.enabled: true,
             PreferenceKey.playSound: true,
@@ -30,8 +65,23 @@ final class Preferences {
             PreferenceKey.ignoredWords: [],
             PreferenceKey.primaryLanguage: Language.russian.rawValue,
             PreferenceKey.spellChecking: true,
-            PreferenceKey.spellAutoCorrect: false
+            PreferenceKey.spellAutoCorrect: false,
+            PreferenceKey.spellingMode: SpellingMode.autoCorrect.rawValue,
+            PreferenceKey.appTheme: AppTheme.system.rawValue,
+            PreferenceKey.automaticallyChecksForUpdates: true
         ])
+        if storedSpellingMode == nil,
+           legacySpellChecking != nil || legacyAutoCorrect != nil {
+            let migrated: SpellingMode
+            if legacySpellChecking == false {
+                migrated = .off
+            } else if legacyAutoCorrect == true {
+                migrated = .autoCorrect
+            } else {
+                migrated = .suggestions
+            }
+            defaults.set(migrated.rawValue, forKey: PreferenceKey.spellingMode)
+        }
     }
 
     var enabled: Bool {
@@ -68,12 +118,54 @@ final class Preferences {
     }
 
     var spellChecking: Bool {
-        get { defaults.bool(forKey: PreferenceKey.spellChecking) }
-        set { defaults.set(newValue, forKey: PreferenceKey.spellChecking) }
+        get { spellingMode != .off }
+        set {
+            if !newValue {
+                spellingMode = .off
+            } else if spellingMode == .off {
+                spellingMode = .suggestions
+            }
+        }
     }
 
     var spellAutoCorrect: Bool {
-        get { defaults.bool(forKey: PreferenceKey.spellAutoCorrect) }
-        set { defaults.set(newValue, forKey: PreferenceKey.spellAutoCorrect) }
+        get { spellingMode == .autoCorrect }
+        set {
+            if newValue {
+                spellingMode = .autoCorrect
+            } else if spellingMode == .autoCorrect {
+                spellingMode = .suggestions
+            }
+        }
+    }
+
+    var spellingMode: SpellingMode {
+        get {
+            SpellingMode(rawValue: defaults.string(forKey: PreferenceKey.spellingMode) ?? "")
+                ?? .autoCorrect
+        }
+        set {
+            defaults.set(newValue.rawValue, forKey: PreferenceKey.spellingMode)
+            defaults.set(newValue != .off, forKey: PreferenceKey.spellChecking)
+            defaults.set(newValue == .autoCorrect, forKey: PreferenceKey.spellAutoCorrect)
+        }
+    }
+
+    var appTheme: AppTheme {
+        get {
+            AppTheme(rawValue: defaults.string(forKey: PreferenceKey.appTheme) ?? "")
+                ?? .system
+        }
+        set { defaults.set(newValue.rawValue, forKey: PreferenceKey.appTheme) }
+    }
+
+    var automaticallyChecksForUpdates: Bool {
+        get { defaults.bool(forKey: PreferenceKey.automaticallyChecksForUpdates) }
+        set { defaults.set(newValue, forKey: PreferenceKey.automaticallyChecksForUpdates) }
+    }
+
+    var lastUpdateCheck: Date? {
+        get { defaults.object(forKey: PreferenceKey.lastUpdateCheck) as? Date }
+        set { defaults.set(newValue, forKey: PreferenceKey.lastUpdateCheck) }
     }
 }

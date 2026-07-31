@@ -134,6 +134,7 @@ private final class GlassSidebarView: NSView {
         super.init(frame: frameRect)
         translatesAutoresizingMaskIntoConstraints = false
 
+        #if compiler(>=6.2)
         if #available(macOS 26.0, *) {
             let glass = NSGlassEffectView()
             glass.translatesAutoresizingMaskIntoConstraints = false
@@ -148,6 +149,14 @@ private final class GlassSidebarView: NSView {
                 glass.bottomAnchor.constraint(equalTo: bottomAnchor)
             ])
         } else {
+            installFallbackMaterial()
+        }
+        #else
+        installFallbackMaterial()
+        #endif
+    }
+
+    private func installFallbackMaterial() {
             let material = NSVisualEffectView()
             material.translatesAutoresizingMaskIntoConstraints = false
             material.material = .sidebar
@@ -166,7 +175,6 @@ private final class GlassSidebarView: NSView {
                 content.topAnchor.constraint(equalTo: material.topAnchor),
                 content.bottomAnchor.constraint(equalTo: material.bottomAnchor)
             ])
-        }
     }
 
     required init?(coder: NSCoder) {

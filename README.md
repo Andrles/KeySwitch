@@ -7,7 +7,7 @@
 [![macOS 13+](https://img.shields.io/badge/macOS-13%2B-111827?logo=apple)](#системные-требования)
 [![Swift](https://img.shields.io/badge/Swift-native-F05138?logo=swift&logoColor=white)](#сборка-из-исходного-кода)
 [![Local processing](https://img.shields.io/badge/privacy-local_processing-16A34A)](#приватность)
-[![Version](https://img.shields.io/badge/version-3.0.0-6D5DFB)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-3.0.1-6D5DFB)](CHANGELOG.md)
 [![Download](https://img.shields.io/badge/download-latest_release-2563EB?logo=github)](https://github.com/Andrles/KeySwitch/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/Andrles/KeySwitch/total?label=downloads&logo=github&color=2563EB)](https://github.com/Andrles/KeySwitch/releases)
 

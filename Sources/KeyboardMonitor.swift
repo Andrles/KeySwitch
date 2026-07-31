@@ -113,12 +113,13 @@ final class KeyboardMonitor {
         }
 
         let spellingParts = splitTrailingPunctuation(from: currentWord)
-        if preferences.spellChecking,
+        let spellingMode = preferences.spellingMode
+        if spellingMode != .off,
            !preferences.ignoredWords.contains(spellingParts.word.lowercased()),
            let language = engine.detectedLanguage(for: spellingParts.word),
            let suggestion = engine.spellingSuggestion(for: spellingParts.word,
                                                        language: language) {
-            if preferences.spellAutoCorrect {
+            if spellingMode == .autoCorrect {
                 let correction = Correction(
                     original: currentWord,
                     replacement: suggestion + spellingParts.trailing,
@@ -128,8 +129,10 @@ final class KeyboardMonitor {
                 currentWord = ""
                 return nil
             }
-            DispatchQueue.main.async { [weak self] in
-                self?.onSpellingIssue?(spellingParts.word, suggestion)
+            if spellingMode == .suggestions {
+                DispatchQueue.main.async { [weak self] in
+                    self?.onSpellingIssue?(spellingParts.word, suggestion)
+                }
             }
         }
 

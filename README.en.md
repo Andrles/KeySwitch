@@ -1,10 +1,10 @@
 <div align="center">
   <img src="docs/assets/banner.svg" alt="KeySwitch — automatic keyboard layout switching for macOS" width="100%">
 
-  [![Version](https://img.shields.io/badge/version-2.2.0-6D5DFB)](CHANGELOG.md)
+  [![Version](https://img.shields.io/badge/version-3.0.0-6D5DFB)](CHANGELOG.md)
   [![Downloads](https://img.shields.io/github/downloads/Andrles/KeySwitch/total?label=downloads&logo=github&color=2563EB)](https://github.com/Andrles/KeySwitch/releases)
 
-  **A native, offline Russian ↔ English keyboard layout assistant for macOS.**
+  **A native Russian ↔ English keyboard layout assistant for macOS.**
 
   [Русский](README.md) · [Download](https://github.com/Andrles/KeySwitch/releases/latest) · [Features](#features) · [Installation](#installation) · [Troubleshooting](#troubleshooting)
 </div>
@@ -20,6 +20,8 @@
 - Adds the currently active app to exclusions directly from the menu bar.
 - Runs in the menu bar without keeping a permanent Dock window.
 - Shows the corrected language as an animated `A/Я` menu bar icon.
+- Supports System, Light, and Dark appearances in a modern macOS design.
+- Checks GitHub Releases for new versions.
 - Never sends typed text to a remote service.
 
 ## Installation
@@ -45,7 +47,9 @@ launches the app. You can [review the script](scripts/install.sh) before running
 
 ## Privacy
 
-All text processing happens locally. KeySwitch does not make network requests, store typing history, or send words to third-party services. See [PRIVACY.md](PRIVACY.md).
+All text processing happens locally. KeySwitch does not store typing history or
+send words to third-party services. Its only optional network request checks the
+latest GitHub Release and never includes typed text. See [PRIVACY.md](PRIVACY.md).
 
 ## Requirements
 
@@ -54,7 +58,7 @@ All text processing happens locally. KeySwitch does not make network requests, s
 | macOS | 13 Ventura or later |
 | Processor | Apple Silicon or Intel |
 | Permission | Accessibility |
-| Internet connection | Not required during use |
+| Internet connection | Optional; used only to check for updates |
 
 ## Troubleshooting
 

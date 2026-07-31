@@ -131,4 +131,13 @@ guard engine.detectedLanguage(for: "привет") == .russian else {
     exit(1)
 }
 
+guard SemanticVersion("v3.0.0") == SemanticVersion("3.0"),
+      SemanticVersion("3.0.1")! > SemanticVersion("3.0.0")!,
+      SemanticVersion("2.10.0")! > SemanticVersion("2.9.9")!,
+      SemanticVersion("3.0.0-beta") == SemanticVersion("3.0.0"),
+      SemanticVersion("not-a-version") == nil else {
+    fputs("FAIL Semantic version comparison\n", stderr)
+    exit(1)
+}
+
 print("LanguageEngineTests: OK")

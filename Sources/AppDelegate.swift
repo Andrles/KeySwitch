@@ -4,7 +4,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let monitor = KeyboardMonitor.shared
     private let preferences = Preferences.shared
-    private let spellingIndicator = SpellingIndicator()
+    private let updateChecker = UpdateChecker.shared
+    private lazy var spellingIndicator = SpellingIndicator()
     private var settingsController: SettingsWindowController?
     private var toggleItem: NSMenuItem?
     private var applicationExclusionItem: NSMenuItem?
@@ -16,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var lastMonitorRunning = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        AppearanceController.apply(preferences.appTheme)
         configureStatusItem()
         captureExternalApplication(NSWorkspace.shared.frontmostApplication)
         NSWorkspace.shared.notificationCenter.addObserver(
@@ -58,6 +60,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             RunLoop.main.add(permissionTimer, forMode: .common)
         }
         refreshMenu()
+        if updateChecker.shouldCheckAutomatically {
+            updateChecker.check { _ in }
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
             guard let self else { return }
             self.openSettings()
@@ -111,6 +116,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                                     keyEquivalent: "")
         permission.image = menuSymbol("hand.raised")
         menu.addItem(permission)
+        let updates = NSMenuItem(title: "Проверить обновления…",
+                                 action: #selector(checkForUpdates),
+                                 keyEquivalent: "")
+        updates.image = menuSymbol("arrow.triangle.2.circlepath")
+        menu.addItem(updates)
         let version = NSMenuItem(title: AppVersion.display,
                                  action: nil,
                                  keyEquivalent: "")
@@ -228,6 +238,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } else {
             showOnboarding()
         }
+    }
+
+    @objc private func checkForUpdates() {
+        openSettings()
+        settingsController?.showAboutAndCheckForUpdates()
     }
 
     private func showOnboarding() {

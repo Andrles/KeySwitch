@@ -13,7 +13,7 @@ final class KeyboardMonitor {
     private var lastShiftRelease: TimeInterval = 0
     private let injectedMarker: Int64 = 0x5241534B
 
-    var onCorrection: (() -> Void)?
+    var onCorrection: ((Language) -> Void)?
     var onSpellingIssue: ((String, String) -> Void)?
     var onPermissionChanged: ((Bool) -> Void)?
 
@@ -101,10 +101,7 @@ final class KeyboardMonitor {
 
         let text = unicodeString(from: event)
         guard !text.isEmpty else { return Unmanaged.passUnretained(event) }
-        let layoutCharacters = "`[];',.~{}:\"<>"
-        if text.allSatisfy({
-            $0.isLetter || $0 == "-" || layoutCharacters.contains($0)
-        }) {
+        if KeyboardTokenClassifier.continuesWord(text) {
             currentWord += text
             return Unmanaged.passUnretained(event)
         }
@@ -173,7 +170,9 @@ final class KeyboardMonitor {
         InputSourceController.select(language: correction.language)
         preferences.correctionCount += 1
         if preferences.playSound { NSSound.beep() }
-        DispatchQueue.main.async { [weak self] in self?.onCorrection?() }
+        DispatchQueue.main.async { [weak self] in
+            self?.onCorrection?(correction.language)
+        }
     }
 
     private func postKey(code: CGKeyCode) {

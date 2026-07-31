@@ -12,6 +12,7 @@ xcrun swiftc \
   -framework AppKit \
   "$project_dir/Sources/SystemDictionary.swift" \
   "$project_dir/Sources/LanguageEngine.swift" \
+  "$project_dir/Sources/KeyboardTokenClassifier.swift" \
   "$project_dir/Sources/KeyboardReplacementPlan.swift" \
   "$project_dir/Tests/main.swift" \
   -o "$project_dir/build/tests/LanguageEngineTests"

@@ -41,8 +41,6 @@ launches the app. You can [review the script](scripts/install.sh) before running
 3. Launch the app.
 4. Grant access in **System Settings → Privacy & Security → Accessibility**.
 
-Local builds use an ad-hoc signature and are not notarized. Public releases should be signed with an Apple Developer ID and notarized.
-
 ## Privacy
 
 All text processing happens locally. KeySwitch does not make network requests, store typing history, or send words to third-party services. See [PRIVACY.md](PRIVACY.md).
@@ -68,7 +66,7 @@ All text processing happens locally. KeySwitch does not make network requests, s
 ### macOS reports that the app is from an unidentified developer
 
 Open **System Settings → Privacy & Security** and confirm that you want to launch
-KeySwitch. Current builds use an ad-hoc signature and are not yet notarized.
+KeySwitch.
 
 ### Temporarily disable automatic switching
 

@@ -1,26 +1,25 @@
 import AppKit
 
-let output = CommandLine.arguments[1]
+guard CommandLine.arguments.count == 3,
+      let artwork = NSImage(contentsOfFile: CommandLine.arguments[1]) else {
+    fatalError("Usage: IconGenerator <artwork> <output>")
+}
+
+let output = CommandLine.arguments[2]
 let size = NSSize(width: 1024, height: 1024)
 let image = NSImage(size: size)
 image.lockFocus()
 
 let rect = NSRect(origin: .zero, size: size)
-let path = NSBezierPath(roundedRect: rect.insetBy(dx: 42, dy: 42), xRadius: 210, yRadius: 210)
-let gradient = NSGradient(colors: [
-    NSColor(calibratedRed: 0.20, green: 0.38, blue: 0.98, alpha: 1),
-    NSColor(calibratedRed: 0.50, green: 0.18, blue: 0.90, alpha: 1)
-])!
-gradient.draw(in: path, angle: -45)
-
-let paragraph = NSMutableParagraphStyle()
-paragraph.alignment = .center
-let attrs: [NSAttributedString.Key: Any] = [
-    .font: NSFont.systemFont(ofSize: 150, weight: .bold),
-    .foregroundColor: NSColor.white,
-    .paragraphStyle: paragraph
-]
-"KeySwitch".draw(in: NSRect(x: 55, y: 370, width: 914, height: 250), withAttributes: attrs)
+NSColor.clear.setFill()
+rect.fill()
+let iconRect = rect.insetBy(dx: 10, dy: 10)
+NSBezierPath(roundedRect: iconRect, xRadius: 225, yRadius: 225).addClip()
+NSGraphicsContext.current?.imageInterpolation = .high
+artwork.draw(in: iconRect,
+             from: NSRect(origin: .zero, size: artwork.size),
+             operation: .sourceOver,
+             fraction: 1)
 image.unlockFocus()
 
 guard let tiff = image.tiffRepresentation,

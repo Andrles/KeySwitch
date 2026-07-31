@@ -14,4 +14,4 @@ xcrun swiftc \
   -framework AppKit \
   "$project_dir/scripts/IconGenerator.swift" \
   -o "$generator"
-"$generator" "$output"
+"$generator" "$project_dir/Resources/AppIconArtwork.png" "$output"

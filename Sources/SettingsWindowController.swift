@@ -111,6 +111,10 @@ private final class HeroView: NSView {
     }
 }
 
+private final class FlippedDocumentView: NSView {
+    override var isFlipped: Bool { true }
+}
+
 private final class SidebarButton: NSButton {
     var selected = false {
         didSet { needsDisplay = true }
@@ -756,7 +760,7 @@ final class SettingsWindowController: NSWindowController,
             scroll.topAnchor.constraint(equalTo: view.topAnchor),
             scroll.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
-        let document = NSView()
+        let document = FlippedDocumentView()
         document.translatesAutoresizingMaskIntoConstraints = false
         scroll.documentView = document
         let stack = NSStackView()
@@ -935,25 +939,12 @@ final class SettingsWindowController: NSWindowController,
     }
 
     private func appMark(size: CGFloat) -> NSView {
-        let background = NSView()
-        background.wantsLayer = true
-        background.layer?.backgroundColor = NSColor.controlAccentColor.cgColor
-        background.layer?.cornerRadius = size * 0.23
-        background.widthAnchor.constraint(equalToConstant: size).isActive = true
-        background.heightAnchor.constraint(equalToConstant: size).isActive = true
-        let image = NSImageView(image: symbol("arrow.triangle.2.circlepath",
-                                              pointSize: size * 0.48,
-                                              color: .white) ?? NSImage())
-        image.contentTintColor = .white
+        let image = NSImageView(image: NSApplication.shared.applicationIconImage)
+        image.imageScaling = .scaleProportionallyUpOrDown
         image.translatesAutoresizingMaskIntoConstraints = false
-        background.addSubview(image)
-        NSLayoutConstraint.activate([
-            image.centerXAnchor.constraint(equalTo: background.centerXAnchor),
-            image.centerYAnchor.constraint(equalTo: background.centerYAnchor),
-            image.widthAnchor.constraint(equalToConstant: size * 0.55),
-            image.heightAnchor.constraint(equalToConstant: size * 0.55)
-        ])
-        return background
+        image.widthAnchor.constraint(equalToConstant: size).isActive = true
+        image.heightAnchor.constraint(equalToConstant: size).isActive = true
+        return image
     }
 
     private func configureAppTable() {

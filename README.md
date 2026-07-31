@@ -7,7 +7,7 @@
 [![macOS 13+](https://img.shields.io/badge/macOS-13%2B-111827?logo=apple)](#системные-требования)
 [![Swift](https://img.shields.io/badge/Swift-native-F05138?logo=swift&logoColor=white)](#сборка-из-исходного-кода)
 [![Offline](https://img.shields.io/badge/privacy-offline-16A34A)](#приватность)
-[![Version](https://img.shields.io/badge/version-2.1.3-6D5DFB)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-2.2.0-6D5DFB)](CHANGELOG.md)
 [![Download](https://img.shields.io/badge/download-latest_release-2563EB?logo=github)](https://github.com/Andrles/KeySwitch/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/Andrles/KeySwitch/total?label=downloads&logo=github&color=2563EB)](https://github.com/Andrles/KeySwitch/releases)
 
@@ -22,11 +22,13 @@
 - Автоматически распознаёт русские и английские слова после завершения ввода.
 - Исправляет неверную раскладку и синхронизирует источник ввода macOS.
 - Использует системные офлайн-словари и встроенный словарь имён.
+- Распознаёт автомобильные марки и модели вида `BMW X3`, `Audi Q7`, `Mazda CX-5`.
 - Проверяет орфографию и умеет исправлять очевидные опечатки.
 - Конвертирует текущее слово двойным нажатием Shift.
 - Позволяет исключать приложения прямо из меню в строке меню.
 - Показывает приложения-исключения с названиями и иконками.
 - Работает в строке меню и не требует постоянного окна в Dock.
+- Показывает текущий язык значком `A/Я` и краткой анимацией после исправления.
 - Не отправляет введённый текст в интернет.
 
 ### Примеры

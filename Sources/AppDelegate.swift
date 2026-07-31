@@ -10,6 +10,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var applicationExclusionItem: NSMenuItem?
     private var lastExternalApplication: NSRunningApplication?
     private var permissionTimer: Timer?
+    private var iconAnimationTimer: Timer?
+    private var displayedLanguage: Language = .english
     private var lastPermissionState = false
     private var lastMonitorRunning = false
 
@@ -22,8 +24,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             name: NSWorkspace.didActivateApplicationNotification,
             object: nil
         )
-        monitor.onCorrection = { [weak self] in
+        monitor.onCorrection = { [weak self] language in
             self?.settingsController?.refresh()
+            self?.animateStatusIcon(to: language)
         }
         monitor.onSpellingIssue = { [weak self] word, suggestion in
             self?.spellingIndicator.show(word: word, suggestion: suggestion)
@@ -135,7 +138,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func refreshMenu() {
         toggleItem?.title = preferences.enabled ? "Приостановить автоматику" : "Включить автоматику"
         toggleItem?.image = menuSymbol(preferences.enabled ? "pause.circle" : "play.circle")
-        statusItem.button?.image = makeStatusImage(enabled: preferences.enabled)
+        statusItem.button?.image = makeStatusImage(
+            enabled: preferences.enabled,
+            glyph: statusGlyph(for: displayedLanguage)
+        )
     }
 
     @objc private func activeApplicationDidChange(_ notification: Notification) {
@@ -239,15 +245,76 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    private func makeStatusImage(enabled: Bool) -> NSImage {
+    private func animateStatusIcon(to language: Language) {
+        iconAnimationTimer?.invalidate()
+        guard preferences.enabled else { return }
+
+        let startLanguage = displayedLanguage
+        let frames: [(glyph: String, rotation: CGFloat)] = [
+            (statusGlyph(for: startLanguage), 0),
+            ("·", 50),
+            (statusGlyph(for: language), 100),
+            (statusGlyph(for: language), 150),
+            (statusGlyph(for: language), 0)
+        ]
+        var frameIndex = 0
+        let timer = Timer.scheduledTimer(withTimeInterval: 0.075,
+                                         repeats: true) { [weak self] timer in
+            guard let self else {
+                timer.invalidate()
+                return
+            }
+            let frame = frames[frameIndex]
+            self.statusItem.button?.image = self.makeStatusImage(
+                enabled: true,
+                glyph: frame.glyph,
+                rotation: frame.rotation
+            )
+            frameIndex += 1
+            if frameIndex == frames.count {
+                timer.invalidate()
+                self.displayedLanguage = language
+                self.statusItem.button?.image = self.makeStatusImage(
+                    enabled: true,
+                    glyph: self.statusGlyph(for: language)
+                )
+            }
+        }
+        iconAnimationTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    private func statusGlyph(for language: Language) -> String {
+        language == .russian ? "Я" : "A"
+    }
+
+    private func makeStatusImage(enabled: Bool,
+                                 glyph: String,
+                                 rotation: CGFloat = 0) -> NSImage {
         let size = NSSize(width: 18, height: 18)
         let result = NSImage(size: size)
         result.lockFocus()
-        let configuration = NSImage.SymbolConfiguration(pointSize: 15, weight: .medium)
-        let keyboard = NSImage(systemSymbolName: "keyboard",
-                               accessibilityDescription: "KeySwitch")?
+        let configuration = NSImage.SymbolConfiguration(pointSize: 16, weight: .medium)
+        let arrows = NSImage(systemSymbolName: "arrow.triangle.2.circlepath",
+                             accessibilityDescription: "KeySwitch")?
             .withSymbolConfiguration(configuration)
-        keyboard?.draw(in: NSRect(x: 1, y: 1, width: 16, height: 16))
+        NSGraphicsContext.saveGraphicsState()
+        let transform = NSAffineTransform()
+        transform.translateX(by: 9, yBy: 9)
+        transform.rotate(byDegrees: rotation)
+        transform.translateX(by: -9, yBy: -9)
+        transform.concat()
+        arrows?.draw(in: NSRect(x: 1, y: 1, width: 16, height: 16))
+        NSGraphicsContext.restoreGraphicsState()
+
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 7, weight: .bold),
+            .foregroundColor: NSColor.labelColor
+        ]
+        let glyphSize = glyph.size(withAttributes: attributes)
+        glyph.draw(at: NSPoint(x: (18 - glyphSize.width) / 2,
+                               y: (18 - glyphSize.height) / 2 - 0.5),
+                   withAttributes: attributes)
         if !enabled {
             NSColor.labelColor.setStroke()
             let slash = NSBezierPath()

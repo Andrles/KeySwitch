@@ -41,6 +41,18 @@ expect(engine.correction(for: "brjyre")?.replacement, "иконку", "User test
 expect(engine.correction(for: "gbie")?.replacement, "пишу", "User test: пишу")
 expect(engine.correction(for: "drk.xtyysv")?.replacement, "включенным", "User test: включенным")
 expect(engine.correction(for: "ghbkj;tybtv")?.replacement, "приложением", "User test: приложением")
+expect(engine.correction(for: ",hspujdbrb")?.replacement,
+       "брызговики",
+       "User test: брызговики")
+expect(engine.correction(for: "<hspujdbrb")?.replacement,
+       "Брызговики",
+       "User test: capitalized Брызговики")
+expect(engine.correction(for: "иьц")?.replacement, "BMW", "Automotive brand BMW")
+expect(engine.correction(for: "фгвш")?.replacement, "Audi", "Automotive brand Audi")
+expect(engine.correction(for: "Ч3")?.replacement, "X3", "Automotive model X3")
+expect(engine.correction(for: "Й7")?.replacement, "Q7", "Automotive model Q7")
+expect(engine.correction(for: "СЧ-5")?.replacement, "CX-5", "Automotive model CX-5")
+expect(engine.correction(for: "ПДУ450")?.replacement, "GLE450", "Automotive model GLE450")
 expect(engine.spellingSuggestion(for: "Alexandr", language: .english),
        "Alexander",
        "User test: English name spelling")
@@ -52,7 +64,17 @@ expectNil(engine.correction(for: "Yes"), "Valid English yes stays")
 expectNil(engine.correction(for: "hi"), "Valid short English stays")
 expectNil(engine.correction(for: "no"), "Valid short English no stays")
 expectNil(engine.correction(for: "palace"), "Valid English palace stays")
+expectNil(engine.correction(for: "версия3"), "Ordinary word with a number stays")
+expectNil(engine.correction(for: "дом15"), "Ordinary Russian text with a number stays")
 expectNil(engine.correction(for: "ghbdtn", ignored: ["ghbdtn"]), "Ignored word stays")
+
+guard KeyboardTokenClassifier.continuesWord("3"),
+      KeyboardTokenClassifier.continuesWord("-"),
+      KeyboardTokenClassifier.continuesWord("Ч"),
+      !KeyboardTokenClassifier.continuesWord(" ") else {
+    fputs("FAIL Model letters, digits, and hyphens must stay in one token\n", stderr)
+    exit(1)
+}
 
 let boundaryCorrection = Correction(
     original: "ghbdtn",

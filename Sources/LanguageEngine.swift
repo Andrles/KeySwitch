@@ -62,7 +62,71 @@ struct LanguageEngine {
     насчёт несмотря согласно спустя включая исключая начиная помимо посредством
     путём касательно относительно из-за из-под течение продолжение исключением
     время связи зависимости направлению
+    брызговик брызговики
     """.split(whereSeparator: \.isWhitespace).map(String.init))
+
+    private static let latinBrands: [String: String] = [
+        "acura": "Acura",
+        "alfa": "Alfa",
+        "audi": "Audi",
+        "bentley": "Bentley",
+        "bmw": "BMW",
+        "byd": "BYD",
+        "cadillac": "Cadillac",
+        "chery": "Chery",
+        "chevrolet": "Chevrolet",
+        "chrysler": "Chrysler",
+        "citroen": "Citroen",
+        "cupra": "Cupra",
+        "dodge": "Dodge",
+        "exeed": "Exeed",
+        "ferrari": "Ferrari",
+        "fiat": "Fiat",
+        "ford": "Ford",
+        "gac": "GAC",
+        "gaz": "GAZ",
+        "geely": "Geely",
+        "genesis": "Genesis",
+        "greatwall": "Great Wall",
+        "haval": "Haval",
+        "honda": "Honda",
+        "hongqi": "Hongqi",
+        "hyundai": "Hyundai",
+        "infiniti": "Infiniti",
+        "jaecoo": "Jaecoo",
+        "jeep": "Jeep",
+        "jetour": "Jetour",
+        "kia": "Kia",
+        "lada": "Lada",
+        "lamborghini": "Lamborghini",
+        "land": "Land",
+        "lexus": "Lexus",
+        "li": "Li Auto",
+        "mazda": "Mazda",
+        "mercedes": "Mercedes",
+        "mini": "MINI",
+        "mitsubishi": "Mitsubishi",
+        "moskvich": "Moskvich",
+        "nissan": "Nissan",
+        "omoda": "Omoda",
+        "opel": "Opel",
+        "peugeot": "Peugeot",
+        "porsche": "Porsche",
+        "renault": "Renault",
+        "rover": "Rover",
+        "seat": "SEAT",
+        "skoda": "Skoda",
+        "subaru": "Subaru",
+        "suzuki": "Suzuki",
+        "tank": "TANK",
+        "tesla": "Tesla",
+        "toyota": "Toyota",
+        "uaz": "UAZ",
+        "volkswagen": "Volkswagen",
+        "volvo": "Volvo",
+        "voyah": "VOYAH",
+        "zeekr": "Zeekr"
+    ]
 
     private static let englishNames: Set<String> = Set("""
     alexander alexey alice andrew anna anton boris daniel david dmitry elena
@@ -149,6 +213,11 @@ struct LanguageEngine {
             }
         } else {
             let converted = convert(word, to: .english)
+            if let identifier = canonicalLatinIdentifier(converted) {
+                return Correction(original: word,
+                                  replacement: identifier,
+                                  language: .english)
+            }
             let replacement = normalizedName(converted, language: .english)
             let sourceScore = russianScore(normalized)
             let targetScore = englishScore(replacement.lowercased())
@@ -158,6 +227,51 @@ struct LanguageEngine {
             }
         }
         return nil
+    }
+
+    private func canonicalLatinIdentifier(_ candidate: String) -> String? {
+        let normalized = candidate.lowercased()
+        if let brand = Self.latinBrands[normalized] {
+            return brand
+        }
+
+        let characters = Array(candidate)
+        guard (2...10).contains(characters.count),
+              characters.contains(where: \.isNumber),
+              characters.contains(where: \.isLetter),
+              characters.filter(\.isLetter).allSatisfy(\.isUppercase),
+              characters.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") }),
+              characters.first?.isLetter == true,
+              characters.last != "-",
+              characters.filter({ $0 == "-" }).count <= 1 else {
+            return nil
+        }
+
+        let parts = candidate.split(separator: "-", omittingEmptySubsequences: false)
+        let compact = characters.filter { $0 != "-" }
+        guard parts.allSatisfy({ !$0.isEmpty }),
+              let firstDigit = compact.firstIndex(where: \.isNumber) else {
+            return nil
+        }
+        let prefix = compact[..<firstDigit]
+        let remainder = compact[firstDigit...]
+        var reachedSuffix = false
+        var hasDigitAfterSuffix = false
+        for character in remainder {
+            if character.isLetter {
+                reachedSuffix = true
+            } else if character.isNumber && reachedSuffix {
+                hasDigitAfterSuffix = true
+            }
+        }
+        guard (1...4).contains(prefix.filter(\.isLetter).count),
+              prefix.allSatisfy(\.isLetter),
+              remainder.filter(\.isNumber).count <= 4,
+              remainder.filter(\.isLetter).count <= 2,
+              !hasDigitAfterSuffix else {
+            return nil
+        }
+        return candidate.uppercased()
     }
 
     private func splitOuterPunctuation(from token: String)

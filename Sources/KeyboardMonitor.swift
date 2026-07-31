@@ -110,9 +110,9 @@ final class KeyboardMonitor {
         }
 
         if let correction = layoutCorrection(for: currentWord) {
-            replaceTypedText(correction, suffix: "")
+            replaceTypedText(correction, boundaryEvent: event)
             currentWord = ""
-            return Unmanaged.passUnretained(event)
+            return nil
         }
 
         let spellingParts = splitTrailingPunctuation(from: currentWord)
@@ -127,9 +127,9 @@ final class KeyboardMonitor {
                     replacement: suggestion + spellingParts.trailing,
                     language: language
                 )
-                replaceTypedText(correction, suffix: "")
+                replaceTypedText(correction, boundaryEvent: event)
                 currentWord = ""
-                return Unmanaged.passUnretained(event)
+                return nil
             }
             DispatchQueue.main.async { [weak self] in
                 self?.onSpellingIssue?(spellingParts.word, suggestion)
@@ -150,16 +150,26 @@ final class KeyboardMonitor {
         defer { lastShiftRelease = now }
         guard now - lastShiftRelease < 0.36,
               let correction = engine.forcedConversion(currentWord) else { return }
-        replaceTypedText(correction, suffix: "")
+        replaceTypedText(correction)
         currentWord = correction.replacement
         lastShiftRelease = 0
     }
 
-    private func replaceTypedText(_ correction: Correction, suffix: String) {
-        for _ in correction.original {
-            postKey(code: 51)
+    private func replaceTypedText(_ correction: Correction, boundaryEvent: CGEvent? = nil) {
+        let plan = KeyboardReplacementPlan(
+            correction: correction,
+            replayBoundary: boundaryEvent != nil
+        )
+        for step in plan.steps {
+            switch step {
+            case .backspace:
+                postKey(code: 51)
+            case let .insert(text):
+                postText(text)
+            case .replayBoundary:
+                if let boundaryEvent { postEvent(boundaryEvent) }
+            }
         }
-        postText(correction.replacement + suffix)
         InputSourceController.select(language: correction.language)
         preferences.correctionCount += 1
         if preferences.playSound { NSSound.beep() }
@@ -185,6 +195,12 @@ final class KeyboardMonitor {
         up.keyboardSetUnicodeString(stringLength: units.count, unicodeString: units)
         down.post(tap: .cgSessionEventTap)
         up.post(tap: .cgSessionEventTap)
+    }
+
+    private func postEvent(_ event: CGEvent) {
+        guard let replay = event.copy() else { return }
+        replay.setIntegerValueField(.eventSourceUserData, value: injectedMarker)
+        replay.post(tap: .cgSessionEventTap)
     }
 
     private func unicodeString(from event: CGEvent) -> String {

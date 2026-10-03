@@ -102,3 +102,20 @@ Bug reports and focused pull requests are welcome. See [CONTRIBUTING.md](CONTRIB
 ## License
 
 Source available, all rights reserved. See [LICENSE.md](LICENSE.md).
+
+## Editing safety and development scope
+
+KeySwitch verifies the focused field, caret and original text before replacement. Secure fields and editors without sufficient Accessibility context are skipped. Double Shift converts the current word; immediately after a correction it restores the original before new input, context changes or 15 seconds. In suggestion mode, double Shift accepts the current suggestion; Escape dismisses it. The General settings example checks the engine only.
+
+Current work focuses on the macOS utility. Voice, AI, Windows and Linux are deferred in [ROADMAP.md](ROADMAP.md).
+
+## Menu bar and Dock
+
+KeySwitch defaults to menu-bar-only mode, including while settings are open.
+Open the window through the keyboard icon in the menu bar. The appearance/startup
+section contains a persistent menu-bar-only toggle; turn it off to show the Dock icon.
+Closing the window keeps the app running. Quit through the KeySwitch menu.
+
+### Safer corrections in 3.1.1
+
+Correct vocabulary, known names, technical terms and identifiers are protected before conversion. Layout conversion preserves letters and case. Automatic spelling uses curated common typo rules; ambiguous dictionary guesses remain suggestions accepted with double Shift. Quotes/brackets are preserved and Tab completes a word. Address/path/code separators are conservative. Mixed identifiers, language collisions and unsupported foreign characters may require manual conversion. The primary supported layout pair is English QWERTY / Russian ЙЦУКЕН.

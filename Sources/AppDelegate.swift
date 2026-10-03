@@ -1,7 +1,7 @@
 import AppKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
-    private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+    private lazy var statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let monitor = KeyboardMonitor.shared
     private let preferences = Preferences.shared
     private let updateChecker = UpdateChecker.shared
@@ -11,14 +11,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var applicationExclusionItem: NSMenuItem?
     private var lastExternalApplication: NSRunningApplication?
     private var permissionTimer: Timer?
-    private var iconAnimationTimer: Timer?
     private var displayedLanguage: Language = .english
     private var lastPermissionState = false
     private var lastMonitorRunning = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppearanceController.apply(preferences.appTheme)
+        // Show the primary UI before input monitoring or update checks start.
+        openSettings()
         configureStatusItem()
+        NotificationCenter.default.addObserver(self,
+                                               selector: #selector(refreshMenu),
+                                               name: .keySwitchStateChanged,
+                                               object: nil)
+        NotificationCenter.default.addObserver(self,
+                                               selector: #selector(handleHideRequest(_:)),
+                                               name: .keySwitchHideRequested,
+                                               object: nil)
+        refreshMenu()
+        if CommandLine.arguments.contains("--ui-preview") { return }
+        if CommandLine.arguments.contains("--launch-check") {
+            var presentationCheckPassed = NSApp.activationPolicy() == .accessory
+            print("Initial: controller=\(settingsController != nil) window=\(settingsController?.window != nil) visible=\(settingsController?.window?.isVisible == true)")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                guard let self else { return }
+                self.preferences.menuBarOnly = false
+                self.refreshMenu()
+                presentationCheckPassed = presentationCheckPassed && NSApp.activationPolicy() == .regular
+                self.preferences.menuBarOnly = true
+                self.refreshMenu()
+                presentationCheckPassed = presentationCheckPassed && NSApp.activationPolicy() == .accessory
+                self.hideSettings()
+                guard let menu = self.statusItem.menu,
+                      let index = menu.items.firstIndex(where: { $0.action == #selector(AppDelegate.openSettings) }) else { return }
+                menu.performActionForItem(at: index)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                let visible = self?.settingsController?.window?.isVisible == true
+                let menuBarOnly = NSApp.activationPolicy() == .accessory
+                print("KeySwitch launch check: delegate=\(self != nil) window=\(self?.settingsController?.window != nil) windowVisible=\(visible) menuBarOnly=\(menuBarOnly) dockToggle=\(presentationCheckPassed)")
+                fflush(stdout)
+                exit(visible && menuBarOnly && presentationCheckPassed ? 0 : 1)
+            }
+            return
+        }
         captureExternalApplication(NSWorkspace.shared.frontmostApplication)
         NSWorkspace.shared.notificationCenter.addObserver(
             self,
@@ -30,26 +66,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.settingsController?.refresh()
             self?.animateStatusIcon(to: language)
         }
+        spellingIndicator.onIgnore = { [weak self] word in self?.monitor.ignoreSuggestion(word: word) }
+        spellingIndicator.onDismiss = { [weak self] in self?.monitor.dismissSuggestion() }
+        monitor.preservesFeedbackAtPoint = { [weak self] in self?.spellingIndicator.contains(eventPoint: $0) ?? false }
+        monitor.onFeedbackInvalidated = { [weak self] in self?.spellingIndicator.hide() }
         monitor.onSpellingIssue = { [weak self] word, suggestion in
             self?.spellingIndicator.show(word: word, suggestion: suggestion)
         }
-        NotificationCenter.default.addObserver(self,
-                                               selector: #selector(refreshMenu),
-                                               name: .keySwitchStateChanged,
-                                               object: nil)
-        NotificationCenter.default.addObserver(self,
-                                               selector: #selector(handleHideRequest(_:)),
-                                               name: .keySwitchHideRequested,
-                                               object: nil)
         preferences.defaults.set(Date(), forKey: "lastLaunchDate")
-        preferences.defaults.synchronize()
         lastPermissionState = monitor.isTrusted
         if monitor.isTrusted {
             monitor.start()
         }
         lastMonitorRunning = monitor.isRunning
         monitor.onPermissionChanged = { [weak self] _ in
-            self?.pollPermission()
+            self?.settingsController?.refresh()
+            self?.refreshMenu()
         }
         permissionTimer = Timer.scheduledTimer(timeInterval: 1,
                                                target: self,
@@ -62,13 +94,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         refreshMenu()
         if updateChecker.shouldCheckAutomatically {
             updateChecker.check { _ in }
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
-            guard let self else { return }
-            self.openSettings()
-            if !self.monitor.isTrusted {
-                self.showOnboarding()
-            }
         }
     }
 
@@ -101,24 +126,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(exclusion)
         menu.addItem(.separator())
 
-        let settings = NSMenuItem(title: "Настройки…",
+        let settings = NSMenuItem(title: "Открыть KeySwitch…",
                                   action: #selector(openSettings),
                                   keyEquivalent: ",")
+        settings.target = self
         settings.image = menuSymbol("gearshape")
         menu.addItem(settings)
-        let hide = NSMenuItem(title: "Свернуть в строку меню",
+        let hide = NSMenuItem(title: "Скрыть окно",
                               action: #selector(hideSettings),
                               keyEquivalent: "m")
+        hide.target = self
         hide.image = menuSymbol("menubar.rectangle")
         menu.addItem(hide)
-        let permission = NSMenuItem(title: "Проверить разрешение",
+        let permission = NSMenuItem(title: "Проверить доступ macOS",
                                     action: #selector(checkPermission),
                                     keyEquivalent: "")
+        permission.target = self
         permission.image = menuSymbol("hand.raised")
         menu.addItem(permission)
         let updates = NSMenuItem(title: "Проверить обновления…",
                                  action: #selector(checkForUpdates),
                                  keyEquivalent: "")
+        updates.target = self
         updates.image = menuSymbol("arrow.triangle.2.circlepath")
         menu.addItem(updates)
         let version = NSMenuItem(title: AppVersion.display,
@@ -131,6 +160,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let quit = NSMenuItem(title: "Завершить KeySwitch",
                               action: #selector(NSApplication.terminate(_:)),
                               keyEquivalent: "q")
+        quit.target = NSApp
         quit.image = menuSymbol("xmark.square")
         menu.addItem(quit)
         statusItem.menu = menu
@@ -142,14 +172,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func toggleEnabled() {
         preferences.enabled.toggle()
-        refreshMenu()
+        monitor.invalidateContext()
+        NotificationCenter.default.post(name: .keySwitchStateChanged, object: nil)
+    }
+
+    private func applyPresentation() {
+        let policy: NSApplication.ActivationPolicy = preferences.menuBarOnly ? .accessory : .regular
+        if NSApp.activationPolicy() != policy { NSApp.setActivationPolicy(policy) }
     }
 
     @objc private func refreshMenu() {
-        toggleItem?.title = preferences.enabled ? "Приостановить автоматику" : "Включить автоматику"
+        applyPresentation()
+        settingsController?.refresh()
+        let state = monitor.state
+        statusItem.button?.toolTip = "KeySwitch: \(state.title)"
+        statusItem.button?.setAccessibilityLabel("KeySwitch: \(state.title)")
+        toggleItem?.title = preferences.enabled ? "Поставить на паузу" : "Включить исправление"
         toggleItem?.image = menuSymbol(preferences.enabled ? "pause.circle" : "play.circle")
         statusItem.button?.image = makeStatusImage(
-            enabled: preferences.enabled,
+            enabled: state == .ready,
             glyph: statusGlyph(for: displayedLanguage)
         )
     }
@@ -157,6 +198,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func activeApplicationDidChange(_ notification: Notification) {
         let application = notification.userInfo?[NSWorkspace.applicationUserInfoKey]
             as? NSRunningApplication
+        monitor.invalidateContext()
+        spellingIndicator.hide()
         captureExternalApplication(application)
     }
 
@@ -177,8 +220,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let name = application.localizedName ?? "Приложение"
         let isExcluded = preferences.excludedApps.contains(bundleID)
         item.title = isExcluded
-            ? "Убрать «\(name)» из исключений"
-            : "Добавить «\(name)» в исключения"
+            ? "Исправлять в «\(name)»"
+            : "Не исправлять в «\(name)»"
         item.representedObject = bundleID
         item.image = applicationMenuIcon(application)
         item.isEnabled = true
@@ -191,37 +234,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } else {
             preferences.excludedApps.append(bundleID)
         }
+        monitor.invalidateContext()
         settingsController?.refresh()
         updateApplicationExclusionItem()
     }
 
     @objc private func pollPermission() {
         let trusted = monitor.isTrusted
+        if trusted != lastPermissionState { monitor.resetRetry() }
         if trusted && !monitor.isRunning {
             monitor.start()
-        } else if !trusted && monitor.isRunning {
+        } else if !trusted {
             monitor.stop()
+        }
+        if !updateChecker.isChecking && updateChecker.shouldCheckAutomatically {
+            updateChecker.check { _ in }
         }
         if trusted != lastPermissionState || monitor.isRunning != lastMonitorRunning {
             lastPermissionState = trusted
             lastMonitorRunning = monitor.isRunning
-            settingsController?.refresh()
+            refreshMenu()
         }
     }
 
     @objc private func openSettings() {
-        NSApp.setActivationPolicy(.regular)
-        if settingsController == nil { settingsController = SettingsWindowController() }
+        applyPresentation()
+        if settingsController == nil { settingsController = SettingsWindowController(initialSection: 0) }
         settingsController?.refresh()
         settingsController?.showWindow(nil)
-        settingsController?.window?.makeKeyAndOrderFront(nil)
-        settingsController?.window?.orderFrontRegardless()
+        guard let window = settingsController?.window else { return }
+        if window.isMiniaturized { window.deminiaturize(nil) }
+        if !NSScreen.screens.contains(where: { $0.visibleFrame.intersects(window.frame) }) {
+            window.center()
+        }
         NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+        window.orderFrontRegardless()
     }
 
     @objc private func hideSettings() {
+        settingsController?.commitPendingEdits()
         settingsController?.window?.orderOut(nil)
-        NSApp.setActivationPolicy(.accessory)
+        applyPresentation()
     }
 
     @objc private func handleHideRequest(_ notification: Notification) {
@@ -230,10 +284,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func checkPermission() {
         if monitor.isTrusted {
+            monitor.resetRetry()
             monitor.start()
             let alert = NSAlert()
-            alert.messageText = "Всё готово"
-            alert.informativeText = "Доступ разрешён, автоматическое исправление работает."
+            alert.messageText = monitor.state.title
+            alert.informativeText = monitor.state.detail
             alert.runModal()
         } else {
             showOnboarding()
@@ -251,7 +306,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         alert.messageText = "Разрешите KeySwitch исправлять ввод"
         alert.informativeText = """
         macOS требует доступ «Универсальный доступ» для глобального исправления раскладки.
-        Набранный текст обрабатывается только на этом Mac и нигде не сохраняется.
+        История печати не сохраняется. Настройки и добавленные вами исключения хранятся на этом Mac.
         """
         alert.addButton(withTitle: "Открыть системный запрос")
         alert.addButton(withTitle: "Позже")
@@ -261,86 +316,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func animateStatusIcon(to language: Language) {
-        iconAnimationTimer?.invalidate()
-        guard preferences.enabled else { return }
-
-        let startLanguage = displayedLanguage
-        let frames: [(glyph: String, rotation: CGFloat)] = [
-            (statusGlyph(for: startLanguage), 0),
-            ("·", 50),
-            (statusGlyph(for: language), 100),
-            (statusGlyph(for: language), 150),
-            (statusGlyph(for: language), 0)
-        ]
-        var frameIndex = 0
-        let timer = Timer.scheduledTimer(withTimeInterval: 0.075,
-                                         repeats: true) { [weak self] timer in
-            guard let self else {
-                timer.invalidate()
-                return
-            }
-            let frame = frames[frameIndex]
-            self.statusItem.button?.image = self.makeStatusImage(
-                enabled: true,
-                glyph: frame.glyph,
-                rotation: frame.rotation
-            )
-            frameIndex += 1
-            if frameIndex == frames.count {
-                timer.invalidate()
-                self.displayedLanguage = language
-                self.statusItem.button?.image = self.makeStatusImage(
-                    enabled: true,
-                    glyph: self.statusGlyph(for: language)
-                )
-            }
-        }
-        iconAnimationTimer = timer
-        RunLoop.main.add(timer, forMode: .common)
+        displayedLanguage = language
+        refreshMenu()
     }
 
     private func statusGlyph(for language: Language) -> String {
-        language == .russian ? "Я" : "A"
+        language == .russian ? "RU" : "EN"
     }
 
-    private func makeStatusImage(enabled: Bool,
-                                 glyph: String,
-                                 rotation: CGFloat = 0) -> NSImage {
-        let size = NSSize(width: 18, height: 18)
-        let result = NSImage(size: size)
-        result.lockFocus()
-        let configuration = NSImage.SymbolConfiguration(pointSize: 16, weight: .medium)
-        let arrows = NSImage(systemSymbolName: "arrow.triangle.2.circlepath",
-                             accessibilityDescription: "KeySwitch")?
-            .withSymbolConfiguration(configuration)
-        NSGraphicsContext.saveGraphicsState()
-        let transform = NSAffineTransform()
-        transform.translateX(by: 9, yBy: 9)
-        transform.rotate(byDegrees: rotation)
-        transform.translateX(by: -9, yBy: -9)
-        transform.concat()
-        arrows?.draw(in: NSRect(x: 1, y: 1, width: 16, height: 16))
-        NSGraphicsContext.restoreGraphicsState()
-
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 7, weight: .bold),
-            .foregroundColor: NSColor.labelColor
-        ]
-        let glyphSize = glyph.size(withAttributes: attributes)
-        glyph.draw(at: NSPoint(x: (18 - glyphSize.width) / 2,
-                               y: (18 - glyphSize.height) / 2 - 0.5),
-                   withAttributes: attributes)
-        if !enabled {
-            NSColor.labelColor.setStroke()
-            let slash = NSBezierPath()
-            slash.lineWidth = 1.8
-            slash.move(to: NSPoint(x: 3, y: 3))
-            slash.line(to: NSPoint(x: 15, y: 15))
-            slash.stroke()
-        }
-        result.unlockFocus()
-        result.isTemplate = true
-        return result
+    private func makeStatusImage(enabled: Bool, glyph: String) -> NSImage {
+        let name = enabled ? "keyboard" : "keyboard.badge.ellipsis"
+        let image = NSImage(systemSymbolName: name, accessibilityDescription: "KeySwitch")?
+            .withSymbolConfiguration(.init(pointSize: 17, weight: .regular)) ?? NSImage()
+        image.isTemplate = true
+        return image
     }
 
     private func menuSymbol(_ name: String) -> NSImage? {

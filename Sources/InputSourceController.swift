@@ -4,6 +4,12 @@ import Foundation
 enum InputSourceController {
     private static var cachedSources: [Language: TISInputSource] = [:]
 
+    static func currentIdentifier() -> String {
+        let source = TISCopyCurrentKeyboardInputSource().takeRetainedValue()
+        guard let pointer = TISGetInputSourceProperty(source, kTISPropertyInputSourceID) else { return "" }
+        return Unmanaged<CFString>.fromOpaque(pointer).takeUnretainedValue() as String
+    }
+
     static func select(language: Language) {
         guard currentLanguage() != language else { return }
         if let cached = cachedSources[language] {

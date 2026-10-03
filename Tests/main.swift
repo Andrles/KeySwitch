@@ -23,7 +23,7 @@ expect(engine.correction(for: "bkb")?.replacement, "или", "Short Russian word
 expect(engine.correction(for: "Lfdfq")?.replacement, "Давай", "Capitalized Russian word")
 expect(engine.correction(for: "Cnfybckfd")?.replacement, "Станислав", "Russian name Stanislav")
 expect(engine.correction(for: "Fktrcfylh")?.replacement, "Александр", "Russian name Alexander")
-expect(engine.correction(for: "Fktrcfyllh")?.replacement, "Александр", "Russian name with one typo")
+expectNil(engine.correction(for: "Fktrcfyllh"), "Layout must not silently rewrite a misspelled name")
 expect(engine.correction(for: "Cltkfq")?.replacement, "Сделай", "User test: Сделай")
 expect(engine.correction(for: "Gjxtve")?.replacement, "Почему", "User test: Почему")
 expect(engine.correction(for: "gthdjt")?.replacement, "первое", "User test: первое")
@@ -47,8 +47,8 @@ expect(engine.correction(for: ",hspujdbrb")?.replacement,
 expect(engine.correction(for: "<hspujdbrb")?.replacement,
        "Брызговики",
        "User test: capitalized Брызговики")
-expect(engine.correction(for: "иьц")?.replacement, "BMW", "Automotive brand BMW")
-expect(engine.correction(for: "фгвш")?.replacement, "Audi", "Automotive brand Audi")
+expect(engine.correction(for: "иьц")?.replacement, "bmw", "Brand layout preserves input case")
+expect(engine.correction(for: "фгвш")?.replacement, "audi", "Brand layout preserves input case")
 expect(engine.correction(for: "Ч3")?.replacement, "X3", "Automotive model X3")
 expect(engine.correction(for: "Й7")?.replacement, "Q7", "Automotive model Q7")
 expect(engine.correction(for: "СЧ-5")?.replacement, "CX-5", "Automotive model CX-5")
@@ -140,4 +140,102 @@ guard SemanticVersion("v3.0.0") == SemanticVersion("3.0"),
     exit(1)
 }
 
+// Regression: valid words must never be rewritten as nearby names.
+for word in ["many", "Many", "may", "mark", "hello", "привет"] {
+    let language: Language = word.unicodeScalars.contains { $0.value >= 0x0400 } ? .russian : .english
+    guard engine.spellingSuggestion(for: word, language: language) == nil else {
+        fputs("FAIL Valid word rewritten as name: \(word)\n", stderr)
+        exit(1)
+    }
+}
+
+// macOS text positions are UTF-16, not Swift grapheme counts.
+let suffix = VerifiedTextSuffix(text: "привет ", caret: 12)
+guard suffix.matches(selection: NSRange(location: 12, length: 0), actual: "привет "),
+      !suffix.matches(selection: NSRange(location: 13, length: 0), actual: "привет "),
+      !suffix.matches(selection: NSRange(location: 12, length: 1), actual: "привет "),
+      !suffix.matches(selection: NSRange(location: 12, length: 0), actual: "другой "),
+      !suffix.matches(selection: NSRange(location: 12, length: 0), actual: nil),
+      VerifiedTextSuffix(text: "😀a", caret: 3).range == NSRange(location: 0, length: 3),
+      VerifiedTextSuffix(text: "hello", caret: 2).range == nil else {
+    fputs("FAIL Unsafe text replacement preflight\n", stderr)
+    exit(1)
+}
+
+var retry = MonitorRetryPolicy()
+for attempt in 0..<5 {
+    let time = Double(attempt) * 100
+    guard retry.allowsAttempt(at: time) else {
+        fputs("FAIL Retry rejected too early\n", stderr); exit(1)
+    }
+    retry.recordFailure(at: time)
+    guard !retry.allowsAttempt(at: time + 1) else {
+        fputs("FAIL Retry must back off\n", stderr); exit(1)
+    }
+}
+guard !retry.allowsAttempt(at: 10_000) else {
+    fputs("FAIL Retries must stop after five failures\n", stderr); exit(1)
+}
+retry.reset()
+guard retry.allowsAttempt(at: 10_000),
+      MonitorState.resolve(enabled: true, trusted: false, running: false) == .needsPermission,
+      MonitorState.resolve(enabled: false, trusted: true, running: true) == .paused,
+      MonitorState.resolve(enabled: true, trusted: true, running: false) == .failed,
+      MonitorState.resolve(enabled: true, trusted: true, running: true) == .ready else {
+    fputs("FAIL Monitor readiness state\n", stderr); exit(1)
+}
+
+guard engine.spellingSuggestion(for: String(repeating: "a", count: 10_000), language: .english) == nil else {
+    fputs("FAIL Long token must bypass spelling\n", stderr); exit(1)
+}
+
 print("LanguageEngineTests: OK")
+
+// Presentation preference must default to menu-bar-only and persist opt-out.
+let presentationSuite = "local.keyswitch.tests.presentation.\(UUID().uuidString)"
+let presentationDefaults = UserDefaults(suiteName: presentationSuite)!
+let presentationPreferences = Preferences(defaults: presentationDefaults)
+precondition(presentationPreferences.menuBarOnly)
+presentationPreferences.menuBarOnly = false
+precondition(!Preferences(defaults: presentationDefaults).menuBarOnly)
+presentationPreferences.menuBarOnly = true
+precondition(Preferences(defaults: presentationDefaults).menuBarOnly)
+presentationDefaults.removePersistentDomain(forName: presentationSuite)
+print("Presentation preference tests: OK")
+
+// Stress-audit regressions: protect correct input before considering candidates.
+for word in ["Chen", "Petr", "ещё", "из-за", "ЖКХ", "РФ,", "МИ8", "ТУ154", "АН2", "ГОСТ123", "МИ-8", "ТУ-154", "АН-2", "ГОСТ-123", "Александра", "Инна", "Наталия", "Anne", "Julie", "Sergei", "Семён", "асинхронность", "коммит", "OpenAI", "macOS", "AMD", "BMW", "РФ", "ЕГЭ", "C:", "https://example.com", "v3.1.0"] {
+    expectNil(engine.correction(for: word), "Protect correct/technical input \(word)")
+    guard engine.spellingCorrection(for: word, automatic: true) == nil else {
+        fputs("FAIL Unsafe automatic spelling: \(word)\n", stderr); exit(1)
+    }
+}
+for (input, expected) in [("зфкл", "park"), ("вфкл", "dark"), ("фкшф", "aria"), ("ЗФКЛ", "PARK"), ("ghbdtn...", "привет..."), ("[зфкл]", "[park]"), ("'ghbdtn'", "'привет'")] {
+    expect(engine.correction(for: input)?.replacement, expected, "Exact layout \(input)")
+}
+for word in ["helo", "adress", "teh", "превет", "малако", "Alexandr", "unknownBrand", "ABC123"] {
+    guard engine.spellingCorrection(for: word, automatic: true) == nil else {
+        fputs("FAIL Ambiguous spelling auto-applied: \(word)\n", stderr); exit(1)
+    }
+}
+for (input, expected) in [("recieve", "receive"), ("Recieve", "Receive"), ("RECIEVE", "RECEIVE"), ("пожалуйсто", "пожалуйста"), ("Пожалуйсто", "Пожалуйста"), ("ПОЖАЛУЙСТО", "ПОЖАЛУЙСТА"), ("[recieve]", "[receive]"), ("\"recieve\"", "\"receive\""), ("'recieve'", "'receive'"), ("recieve...", "receive...")] {
+    expect(engine.spellingCorrection(for: input, automatic: true)?.replacement, expected, "Safe spelling and punctuation \(input)")
+}
+if ProcessInfo.processInfo.environment["KEYSWITCH_DISABLE_SYSTEM_DICTIONARY"] == "0" {
+    guard SystemDictionary.shared.contains("hello", language: .english), SystemDictionary.shared.contains("мир", language: .russian) else {
+        fputs("FAIL System dictionary service unavailable\n", stderr); exit(1)
+    }
+    let lower = SystemDictionary.shared.suggestion(for: "recieve", language: .english)!
+    expect(SystemDictionary.shared.suggestion(for: "Recieve", language: .english), TextToken.applyingCase(of: "Recieve", to: lower), "Cache title case")
+    expect(SystemDictionary.shared.suggestion(for: "RECIEVE", language: .english), lower.uppercased(), "Cache upper case")
+    let upper = SystemDictionary.shared.suggestion(for: "ПОЖАЛУЙСТО", language: .russian)!
+    expect(SystemDictionary.shared.suggestion(for: "пожалуйсто", language: .russian), upper.lowercased(), "Cache lowercase after uppercase")
+}
+print("Stress regression tests: OK")
+
+guard !KeyboardTokenClassifier.isNavigationKey(48), KeyboardTokenClassifier.isNavigationKey(123),
+      KeyboardTokenClassifier.isTechnicalBoundary("/"), KeyboardTokenClassifier.isTechnicalBoundary("@"),
+      !KeyboardTokenClassifier.isTechnicalBoundary("\t"), !KeyboardTokenClassifier.isTechnicalBoundary(" ") else {
+    fputs("FAIL Word completion/navigation policy\n", stderr); exit(1)
+}
+print("Keyboard boundary policy tests: OK")

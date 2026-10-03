@@ -2,6 +2,18 @@ import AppKit
 import ServiceManagement
 import UniformTypeIdentifiers
 
+private enum UIStyle {
+    static let accent = NSColor(name: nil) { appearance in
+        let dark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        return dark ? NSColor(calibratedRed: 0.61, green: 0.73, blue: 0.95, alpha: 1)
+                    : NSColor(calibratedRed: 0.19, green: 0.36, blue: 0.70, alpha: 1)
+    }
+    static let secondaryText = NSColor(name: nil) { appearance in
+        let dark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        return NSColor(calibratedWhite: dark ? 0.72 : 0.32, alpha: 1)
+    }
+}
+
 final class TraySettingsWindow: NSWindow {
     override func miniaturize(_ sender: Any?) {
         hideToTray(sender)
@@ -27,11 +39,11 @@ private enum SettingsSection: Int, CaseIterable {
 
     var title: String {
         switch self {
-        case .general: return "Основные"
-        case .spelling: return "Орфография"
-        case .exclusions: return "Исключения"
-        case .permissions: return "Разрешения"
-        case .appearance: return "Оформление"
+        case .general: return "Главная"
+        case .spelling: return "Опечатки"
+        case .exclusions: return "Не исправлять"
+        case .permissions: return "Доступ macOS"
+        case .appearance: return "Вид и запуск"
         case .about: return "О приложении"
         }
     }
@@ -69,47 +81,20 @@ private final class CardView: NSView {
     private func updateAppearance() {
         effectiveAppearance.performAsCurrentDrawingAppearance {
             layer?.backgroundColor = NSColor.controlBackgroundColor
-                .withAlphaComponent(0.82).cgColor
+                .withAlphaComponent(1).cgColor
             layer?.borderColor = NSColor.separatorColor
                 .withAlphaComponent(0.55).cgColor
         }
-        layer?.cornerRadius = 16
+        layer?.cornerRadius = 12
         layer?.borderWidth = 1
         layer?.shadowColor = NSColor.black.cgColor
-        layer?.shadowOpacity = 0.09
+        layer?.shadowOpacity = 0
         layer?.shadowRadius = 12
         layer?.shadowOffset = CGSize(width: 0, height: -3)
     }
 }
 
-private final class HeroView: NSView {
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        wantsLayer = true
-        let gradient = CAGradientLayer()
-        gradient.colors = [
-            NSColor(calibratedRed: 0.30, green: 0.44, blue: 1.0, alpha: 1).cgColor,
-            NSColor(calibratedRed: 0.62, green: 0.34, blue: 0.97, alpha: 1).cgColor
-        ]
-        gradient.startPoint = CGPoint(x: 0, y: 0.5)
-        gradient.endPoint = CGPoint(x: 1, y: 0.5)
-        gradient.cornerRadius = 20
-        layer = gradient
-        layer?.shadowColor = NSColor.black.cgColor
-        layer?.shadowOpacity = 0.14
-        layer?.shadowRadius = 14
-        layer?.shadowOffset = CGSize(width: 0, height: -4)
-    }
-
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    override func layout() {
-        super.layout()
-        layer?.frame = bounds
-    }
-}
+private final class SectionStackView: NSStackView {}
 
 private final class FlippedDocumentView: NSView {
     override var isFlipped: Bool { true }
@@ -122,7 +107,7 @@ private final class SidebarButton: NSButton {
 
     override func draw(_ dirtyRect: NSRect) {
         if selected {
-            NSColor.controlAccentColor.withAlphaComponent(0.16).setFill()
+            UIStyle.accent.withAlphaComponent(0.16).setFill()
             NSBezierPath(roundedRect: bounds.insetBy(dx: 2, dy: 2),
                          xRadius: 10,
                          yRadius: 10).fill()
@@ -131,64 +116,29 @@ private final class SidebarButton: NSButton {
     }
 }
 
-private final class GlassSidebarView: NSView {
+private final class GlassSidebarView: NSVisualEffectView {
     let content = NSView()
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        translatesAutoresizingMaskIntoConstraints = false
-
-        #if compiler(>=6.2)
-        if #available(macOS 26.0, *) {
-            let glass = NSGlassEffectView()
-            glass.translatesAutoresizingMaskIntoConstraints = false
-            glass.cornerRadius = 18
-            glass.tintColor = NSColor.controlAccentColor.withAlphaComponent(0.04)
-            glass.contentView = content
-            addSubview(glass)
-            NSLayoutConstraint.activate([
-                glass.leadingAnchor.constraint(equalTo: leadingAnchor),
-                glass.trailingAnchor.constraint(equalTo: trailingAnchor),
-                glass.topAnchor.constraint(equalTo: topAnchor),
-                glass.bottomAnchor.constraint(equalTo: bottomAnchor)
-            ])
-        } else {
-            installFallbackMaterial()
-        }
-        #else
-        installFallbackMaterial()
-        #endif
+        material = .sidebar
+        blendingMode = .withinWindow
+        state = .active
+        content.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(content)
+        NSLayoutConstraint.activate([
+            content.leadingAnchor.constraint(equalTo: leadingAnchor),
+            content.trailingAnchor.constraint(equalTo: trailingAnchor),
+            content.topAnchor.constraint(equalTo: topAnchor),
+            content.bottomAnchor.constraint(equalTo: bottomAnchor)
+        ])
     }
-
-    private func installFallbackMaterial() {
-            let material = NSVisualEffectView()
-            material.translatesAutoresizingMaskIntoConstraints = false
-            material.material = .sidebar
-            material.blendingMode = .withinWindow
-            material.state = .active
-            addSubview(material)
-            material.addSubview(content)
-            content.translatesAutoresizingMaskIntoConstraints = false
-            NSLayoutConstraint.activate([
-                material.leadingAnchor.constraint(equalTo: leadingAnchor),
-                material.trailingAnchor.constraint(equalTo: trailingAnchor),
-                material.topAnchor.constraint(equalTo: topAnchor),
-                material.bottomAnchor.constraint(equalTo: bottomAnchor),
-                content.leadingAnchor.constraint(equalTo: material.leadingAnchor),
-                content.trailingAnchor.constraint(equalTo: material.trailingAnchor),
-                content.topAnchor.constraint(equalTo: material.topAnchor),
-                content.bottomAnchor.constraint(equalTo: material.bottomAnchor)
-            ])
-    }
-
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 }
 
 final class SettingsWindowController: NSWindowController,
                                       NSTableViewDataSource,
-                                      NSTableViewDelegate {
+                                      NSTableViewDelegate, NSTextFieldDelegate {
     private let preferences = Preferences.shared
     private let monitor = KeyboardMonitor.shared
     private let updateChecker = UpdateChecker.shared
@@ -198,7 +148,6 @@ final class SettingsWindowController: NSWindowController,
     private var selectedSection: SettingsSection = .general
     private var sidebarButtons: [SettingsSection: SidebarButton] = [:]
 
-    private weak var correctionCountLabel: NSTextField?
     private weak var accessStatusLabel: NSTextField?
     private weak var spellingModeControl: NSSegmentedControl?
     private weak var ignoredWordsField: NSTextField?
@@ -207,22 +156,32 @@ final class SettingsWindowController: NSWindowController,
     private weak var updateStatusLabel: NSTextField?
     private weak var updateDetailLabel: NSTextField?
     private weak var updateActionButton: NSButton?
+    private weak var statusIcon: NSImageView?
+    private weak var statusTitleLabel: NSTextField?
+    private weak var statusDetailLabel: NSTextField?
+    private weak var enabledControl: NSButton?
+    private weak var removeApplicationButton: NSButton?
+    private weak var emptyExclusionsLabel: NSTextField?
+    private var renderedMonitorState: MonitorState?
+    private weak var testField: NSTextField?
+    private weak var testResultLabel: NSTextField?
     private var pendingUpdateURL: URL?
 
-    convenience init() {
+    convenience init(initialSection: Int) {
         let window = TraySettingsWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 960, height: 670),
+            contentRect: NSRect(x: 0, y: 0, width: 820, height: 620),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
         window.title = "KeySwitch"
-        window.minSize = NSSize(width: 900, height: 620)
+        window.minSize = NSSize(width: 760, height: 560)
         window.titlebarAppearsTransparent = true
         window.center()
         self.init(window: window)
         configureAppTable()
         buildUI()
+        if let section = SettingsSection(rawValue: initialSection) { showSection(section) }
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(updateStateChanged),
@@ -253,11 +212,11 @@ final class SettingsWindowController: NSWindowController,
             background.trailingAnchor.constraint(equalTo: content.trailingAnchor),
             background.topAnchor.constraint(equalTo: content.topAnchor),
             background.bottomAnchor.constraint(equalTo: content.bottomAnchor),
-            sidebar.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: 14),
-            sidebar.topAnchor.constraint(equalTo: background.topAnchor, constant: 14),
-            sidebar.bottomAnchor.constraint(equalTo: background.bottomAnchor, constant: -14),
+            sidebar.leadingAnchor.constraint(equalTo: background.leadingAnchor),
+            sidebar.topAnchor.constraint(equalTo: background.topAnchor),
+            sidebar.bottomAnchor.constraint(equalTo: background.bottomAnchor),
             sidebar.widthAnchor.constraint(equalToConstant: 220),
-            contentHost.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: 18),
+            contentHost.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: 0),
             contentHost.trailingAnchor.constraint(equalTo: background.trailingAnchor),
             contentHost.topAnchor.constraint(equalTo: background.topAnchor),
             contentHost.bottomAnchor.constraint(equalTo: background.bottomAnchor)
@@ -284,12 +243,12 @@ final class SettingsWindowController: NSWindowController,
         header.orientation = .horizontal
         header.alignment = .centerY
         header.spacing = 10
-        header.addArrangedSubview(appMark(size: 40))
+        header.addArrangedSubview(appMark(size: 32))
         let labels = NSStackView()
         labels.orientation = .vertical
         labels.spacing = 1
         let name = label("KeySwitch", size: 16, weight: .semibold)
-        let languages = label("Русский  ⇄  English", size: 10, color: .secondaryLabelColor)
+        let languages = label("Русский и английский", size: 10, color: UIStyle.secondaryText)
         labels.addArrangedSubview(name)
         labels.addArrangedSubview(languages)
         header.addArrangedSubview(labels)
@@ -305,7 +264,7 @@ final class SettingsWindowController: NSWindowController,
         root.addArrangedSubview(spacer)
         root.addArrangedSubview(sidebarButton(for: .about))
 
-        let version = label(AppVersion.display, size: 10, color: .tertiaryLabelColor)
+        let version = label(AppVersion.display, size: 10, color: UIStyle.secondaryText)
         version.toolTip = "Сборка \(AppVersion.build)"
         root.addArrangedSubview(version)
     }
@@ -321,10 +280,12 @@ final class SettingsWindowController: NSWindowController,
         button.alignment = .left
         button.font = .systemFont(ofSize: 13,
                                   weight: section == selectedSection ? .semibold : .regular)
-        button.contentTintColor = section == selectedSection ? .controlAccentColor : .labelColor
+        button.contentTintColor = .labelColor
         button.selected = section == selectedSection
+        button.setButtonType(.toggle)
+        button.state = section == selectedSection ? .on : .off
         button.heightAnchor.constraint(equalToConstant: 36).isActive = true
-        button.widthAnchor.constraint(equalToConstant: 192).isActive = true
+        button.widthAnchor.constraint(equalToConstant: 172).isActive = true
         sidebarButtons[section] = button
         return button
     }
@@ -335,12 +296,15 @@ final class SettingsWindowController: NSWindowController,
     }
 
     private func showSection(_ section: SettingsSection) {
+        saveIgnoredWords()
         selectedSection = section
+        renderedMonitorState = monitor.state
         for (value, button) in sidebarButtons {
             button.selected = value == section
+            button.state = value == section ? .on : .off
             button.font = .systemFont(ofSize: 13,
                                       weight: value == section ? .semibold : .regular)
-            button.contentTintColor = value == section ? .controlAccentColor : .labelColor
+            button.contentTintColor = .labelColor
         }
         contentHost.subviews.forEach { $0.removeFromSuperview() }
         resetWeakControls()
@@ -354,6 +318,7 @@ final class SettingsWindowController: NSWindowController,
         case .appearance: sectionView = buildAppearanceSection()
         case .about: sectionView = buildAboutSection()
         }
+        fillSectionWidth(in: sectionView)
         sectionView.translatesAutoresizingMaskIntoConstraints = false
         contentHost.addSubview(sectionView)
         NSLayoutConstraint.activate([
@@ -365,8 +330,24 @@ final class SettingsWindowController: NSWindowController,
         refresh()
     }
 
+    private func fillSectionWidth(in view: NSView) {
+        if let stack = view as? SectionStackView {
+            for child in stack.arrangedSubviews {
+                child.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+            }
+        }
+        for child in view.subviews { fillSectionWidth(in: child) }
+    }
+
     private func resetWeakControls() {
-        correctionCountLabel = nil
+        statusIcon = nil
+        statusTitleLabel = nil
+        statusDetailLabel = nil
+        enabledControl = nil
+        removeApplicationButton = nil
+        emptyExclusionsLabel = nil
+        testField = nil
+        testResultLabel = nil
         accessStatusLabel = nil
         spellingModeControl = nil
         ignoredWordsField = nil
@@ -378,97 +359,71 @@ final class SettingsWindowController: NSWindowController,
     }
 
     private func buildGeneralSection() -> NSView {
-        let (view, stack) = sectionCanvas(
-            title: "Основные",
-            subtitle: "Управление автоматикой и поведением KeySwitch"
-        )
-        let hero = HeroView()
-        hero.translatesAutoresizingMaskIntoConstraints = false
-        hero.heightAnchor.constraint(equalToConstant: 120).isActive = true
-        let heroStack = NSStackView()
-        heroStack.orientation = .horizontal
-        heroStack.alignment = .centerY
-        heroStack.spacing = 16
-        heroStack.translatesAutoresizingMaskIntoConstraints = false
-        hero.addSubview(heroStack)
-        NSLayoutConstraint.activate([
-            heroStack.leadingAnchor.constraint(equalTo: hero.leadingAnchor, constant: 22),
-            heroStack.trailingAnchor.constraint(equalTo: hero.trailingAnchor, constant: -22),
-            heroStack.centerYAnchor.constraint(equalTo: hero.centerYAnchor)
-        ])
-        let check = NSImageView(image: symbol("checkmark.circle.fill",
-                                             pointSize: 25,
-                                             color: .white) ?? NSImage())
-        heroStack.addArrangedSubview(check)
-        let heroLabels = verticalLabels(
-            title: preferences.enabled ? "Автоматика активна" : "Автоматика приостановлена",
-            subtitle: "Русский  ⇄  English  ·  язык определяется автоматически",
-            light: true
-        )
-        heroStack.addArrangedSubview(heroLabels)
-        heroStack.addArrangedSubview(spacer())
-        let count = label("\(preferences.correctionCount) исправлений",
-                          size: 11,
-                          color: NSColor.white.withAlphaComponent(0.78))
-        correctionCountLabel = count
-        heroStack.addArrangedSubview(count)
-        let enabledSwitch = switchButton(state: preferences.enabled,
-                                         action: #selector(toggleEnabled(_:)))
-        heroStack.addArrangedSubview(enabledSwitch)
-        stack.addArrangedSubview(hero)
+        let (view, stack) = sectionCanvas(title: "Печатайте спокойно", subtitle: "KeySwitch исправит слово, набранное не на том языке.")
+        let status = card(height: 140)
+        let row = NSStackView()
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 10
+        let icon = NSImageView(image: symbol("keyboard", pointSize: 20, color: UIStyle.accent) ?? NSImage())
+        statusIcon = icon
+        row.addArrangedSubview(icon)
+        let labels = NSStackView()
+        labels.orientation = .vertical
+        labels.alignment = .leading
+        labels.spacing = 4
+        let title = label(monitor.state.title, size: 15, weight: .semibold)
+        let detail = label(monitor.state.detail, size: 12, color: UIStyle.secondaryText, wrapping: true)
+        statusTitleLabel = title
+        statusDetailLabel = detail
+        labels.addArrangedSubview(title)
+        labels.addArrangedSubview(detail)
+        row.addArrangedSubview(labels)
+        status.stack.addArrangedSubview(row)
+        status.stack.addArrangedSubview(separator())
+        let controls = NSStackView()
+        controls.orientation = .horizontal
+        controls.alignment = .centerY
+        controls.addArrangedSubview(label("Исправлять раскладку", size: 13, weight: .medium))
+        controls.addArrangedSubview(spacer())
+        let enabled = switchButton(accessibilityLabel: "Исправлять раскладку", state: preferences.enabled, action: #selector(toggleEnabled(_:)))
+        enabledControl = enabled
+        controls.addArrangedSubview(enabled)
+        status.stack.addArrangedSubview(controls)
+        if !monitor.isTrusted {
+            status.stack.addArrangedSubview(NSButton(title: "Разрешить исправление…", target: self, action: #selector(openPermissionsSection)))
+        }
+        stack.addArrangedSubview(status.view)
 
-        let behavior = card(height: 150)
-        behavior.stack.addArrangedSubview(sectionCardHeader(
-            symbolName: "switch.2",
-            title: "Поведение",
-            subtitle: "Звуки и запуск приложения",
-            tint: .controlAccentColor
-        ))
-        behavior.stack.addArrangedSubview(separator())
-        behavior.stack.addArrangedSubview(settingRow(
-            title: "Звуковой сигнал",
-            subtitle: "После автоматического исправления",
-            state: preferences.playSound,
-            action: #selector(toggleSound(_:))
-        ))
-        behavior.stack.addArrangedSubview(settingRow(
-            title: "Запуск при входе",
-            subtitle: "KeySwitch готов к работе сразу после входа",
-            state: SMAppService.mainApp.status == .enabled,
-            action: #selector(toggleLogin(_:))
-        ))
-        stack.addArrangedSubview(behavior.view)
-
-        let summary = card(height: 92)
-        let summaryRow = NSStackView()
-        summaryRow.orientation = .horizontal
-        summaryRow.alignment = .centerY
-        summaryRow.spacing = 14
-        summaryRow.addArrangedSubview(NSImageView(image: symbol(
-            "text.badge.checkmark",
-            pointSize: 23,
-            color: .systemBlue
-        ) ?? NSImage()))
-        summaryRow.addArrangedSubview(verticalLabels(
-            title: "Орфография: \(preferences.spellingMode.displayTitle)",
-            subtitle: preferences.spellingMode == .suggestions
-                ? "Подсказки появляются после найденной опечатки"
-                : "Всплывающее окно не используется"
-        ))
-        summaryRow.addArrangedSubview(spacer())
-        summaryRow.addArrangedSubview(linkButton("Настроить",
-                                                 action: #selector(openSpellingSection)))
-        summary.stack.addArrangedSubview(summaryRow)
-        stack.addArrangedSubview(summary.view)
-
-        stack.addArrangedSubview(footerView())
+        let practice = card(height: 142)
+        practice.stack.addArrangedSubview(label("Попробуйте здесь", size: 15, weight: .semibold))
+        practice.stack.addArrangedSubview(label("ghbdtn превратится в привет. Это безопасный пример внутри KeySwitch.", size: 12, color: UIStyle.secondaryText, wrapping: true))
+        let practiceRow = NSStackView()
+        practiceRow.orientation = .horizontal
+        practiceRow.alignment = .centerY
+        practiceRow.spacing = 8
+        let field = NSTextField(string: "ghbdtn")
+        field.setAccessibilityLabel("Слово для примера")
+        field.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        testField = field
+        practiceRow.addArrangedSubview(field)
+        practiceRow.addArrangedSubview(NSButton(title: "Исправить", target: self, action: #selector(testCorrection)))
+        practice.stack.addArrangedSubview(practiceRow)
+        let result = label("Пример не меняет текст в других приложениях.", size: 12, color: UIStyle.secondaryText, wrapping: true)
+        testResultLabel = result
+        practice.stack.addArrangedSubview(result)
+        stack.addArrangedSubview(practice.view)
+        stack.addArrangedSubview(verticalLabels(title: "Дважды нажмите Shift", subtitle: "Сменить язык текущего слова. Сразу после исправления это вернёт исходное слово."))
+        stack.addArrangedSubview(settingRow(title: "Звук при исправлении", subtitle: "Короткий сигнал после замены слова", state: preferences.playSound, action: #selector(toggleSound(_:))))
         return view
     }
 
+    @objc private func openPermissionsSection() { showSection(.permissions) }
+
     private func buildSpellingSection() -> NSView {
         let (view, stack) = sectionCanvas(
-            title: "Орфография",
-            subtitle: "Проверка запускается только в выбранном режиме"
+            title: "Опечатки",
+            subtitle: "Выберите, что делать с ошибками в словах."
         )
         let modeCard = card(height: 150)
         modeCard.stack.addArrangedSubview(sectionCardHeader(
@@ -483,6 +438,7 @@ final class SettingsWindowController: NSWindowController,
             target: self,
             action: #selector(changeSpellingMode(_:))
         )
+        mode.setAccessibilityLabel("Режим проверки орфографии")
         mode.selectedSegment = SpellingMode.allCases.firstIndex(
             of: preferences.spellingMode
         ) ?? 0
@@ -495,9 +451,9 @@ final class SettingsWindowController: NSWindowController,
         let info = card(height: 112)
         info.stack.addArrangedSubview(sectionCardHeader(
             symbolName: "bolt.fill",
-            title: "Лёгкий режим",
+            title: "Как работает выбранный режим",
             subtitle: spellingDescription,
-            tint: .controlAccentColor
+            tint: UIStyle.accent
         ))
         stack.addArrangedSubview(info.view)
 
@@ -505,12 +461,14 @@ final class SettingsWindowController: NSWindowController,
         ignored.stack.addArrangedSubview(sectionCardHeader(
             symbolName: "textformat.abc",
             title: "Не исправлять эти слова",
-            subtitle: "Перечислите слова через запятую",
+            subtitle: "Напишите слова через запятую и нажмите Enter.",
             tint: .systemOrange
         ))
         let field = NSTextField()
         field.stringValue = preferences.ignoredWords.sorted().joined(separator: ", ")
-        field.placeholderString = "API, KeySwitch, productname"
+        field.placeholderAttributedString = NSAttributedString(string: "Например: KeySwitch, API", attributes: [.foregroundColor: UIStyle.secondaryText])
+        field.setAccessibilityLabel("Слова, которые не нужно исправлять; через запятую")
+        field.delegate = self
         field.target = self
         field.action = #selector(saveIgnoredWords)
         ignoredWordsField = field
@@ -523,17 +481,17 @@ final class SettingsWindowController: NSWindowController,
     private var spellingDescription: String {
         switch preferences.spellingMode {
         case .off:
-            return "Слова не проверяются, системный словарь не вызывается."
+            return "KeySwitch меняет только раскладку. Опечатки остаются как есть."
         case .suggestions:
-            return "После ошибки показывается компактная подсказка на 2,4 секунды."
+            return "Появится подсказка. Нажмите Shift дважды, чтобы принять её, или закройте."
         case .autoCorrect:
-            return "Очевидные ошибки исправляются без создания всплывающего окна."
+            return "Проверенные опечатки исправляются сразу. Для остальных появится подсказка. Двойной Shift принимает подсказку или отменяет исправление."
         }
     }
 
     private func buildExclusionsSection() -> NSView {
         let (view, stack) = sectionCanvas(
-            title: "Исключения",
+            title: "Где не исправлять",
             subtitle: "В этих приложениях KeySwitch не изменяет ввод"
         )
         let tableCard = card(height: 360)
@@ -542,6 +500,12 @@ final class SettingsWindowController: NSWindowController,
         scroll.hasVerticalScroller = true
         scroll.drawsBackground = false
         scroll.borderType = .noBorder
+        scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 180).isActive = true
+        let empty = label("Исключений нет. Добавьте приложение, в котором KeySwitch не должен менять текст.",
+                          size: 12, color: UIStyle.secondaryText, wrapping: true)
+        empty.isHidden = !preferences.excludedApps.isEmpty
+        emptyExclusionsLabel = empty
+        tableCard.stack.addArrangedSubview(empty)
         tableCard.stack.addArrangedSubview(scroll)
         let controls = NSStackView()
         controls.orientation = .horizontal
@@ -550,11 +514,14 @@ final class SettingsWindowController: NSWindowController,
                            target: self,
                            action: #selector(addApplication))
         add.bezelStyle = .rounded
+        add.imagePosition = .imageLeading
         add.image = symbol("plus", pointSize: 12)
-        let remove = NSButton(title: "Удалить выбранное",
+        let remove = NSButton(title: "Убрать из списка",
                               target: self,
                               action: #selector(removeSelectedApp))
         remove.bezelStyle = .rounded
+        remove.isEnabled = appTable.selectedRow >= 0
+        removeApplicationButton = remove
         controls.addArrangedSubview(add)
         controls.addArrangedSubview(remove)
         controls.addArrangedSubview(spacer())
@@ -575,28 +542,30 @@ final class SettingsWindowController: NSWindowController,
 
     private func buildPermissionsSection() -> NSView {
         let (view, stack) = sectionCanvas(
-            title: "Разрешения",
+            title: "Доступ macOS",
             subtitle: "Доступ необходим только для исправления введённого текста"
         )
         let granted = monitor.isTrusted
         let access = card(height: 130)
         access.stack.addArrangedSubview(sectionCardHeader(
             symbolName: granted ? "checkmark.shield.fill" : "exclamationmark.shield.fill",
-            title: granted ? "Доступ разрешён" : "Требуется Универсальный доступ",
-            subtitle: granted
-                ? "KeySwitch готов исправлять раскладку во всех приложениях."
-                : "Разрешите KeySwitch управлять вводом в настройках macOS.",
+            title: monitor.state.title,
+            subtitle: monitor.state.detail,
             tint: granted ? .systemGreen : .systemOrange
         ))
         let statusRow = NSStackView()
         statusRow.orientation = .horizontal
         statusRow.addArrangedSubview(spacer())
-        let status = label(granted ? "● Активно" : "● Не разрешено",
+        let status = label(granted ? "Доступ разрешён" : "Доступ не разрешён",
                            size: 12,
                            weight: .semibold,
-                           color: granted ? .systemGreen : .systemOrange)
-        accessStatusLabel = status
+                           color: UIStyle.secondaryText)
+        status.stringValue = granted ? "Доступ разрешён" : "Доступ не разрешён"
         statusRow.addArrangedSubview(status)
+        if granted && !monitor.isRunning {
+            statusRow.addArrangedSubview(NSButton(title: "Повторить запуск", target: self,
+                                                  action: #selector(retryMonitor)))
+        }
         if !granted {
             statusRow.addArrangedSubview(NSButton(
                 title: "Открыть настройки macOS",
@@ -605,19 +574,26 @@ final class SettingsWindowController: NSWindowController,
             ))
         }
         access.stack.addArrangedSubview(statusRow)
+        if !granted {
+            access.stack.addArrangedSubview(label(
+                "Уже разрешили доступ? После обновления может понадобиться удалить старую запись KeySwitch и добавить новую копию. Затем перезапустите приложение.",
+                size: 12, color: UIStyle.secondaryText, wrapping: true))
+            access.stack.addArrangedSubview(NSButton(title: "Показать приложение в Finder",
+                target: self, action: #selector(revealApplication)))
+        }
         stack.addArrangedSubview(access.view)
 
         let privacy = card(height: 135)
         privacy.stack.addArrangedSubview(sectionCardHeader(
             symbolName: "lock.shield",
             title: "Конфиденциальность",
-            subtitle: "Введённые слова обрабатываются локально и не сохраняются.",
+            subtitle: "История печати не сохраняется. Настройки и добавленные вами исключения хранятся локально.",
             tint: .systemBlue
         ))
         let details = label(
             "Сетевой запрос выполняется только для проверки версии KeySwitch через GitHub. Текст ввода в этот запрос не включается.",
             size: 12,
-            color: .secondaryLabelColor,
+            color: UIStyle.secondaryText,
             wrapping: true
         )
         privacy.stack.addArrangedSubview(details)
@@ -628,15 +604,15 @@ final class SettingsWindowController: NSWindowController,
 
     private func buildAppearanceSection() -> NSView {
         let (view, stack) = sectionCanvas(
-            title: "Оформление",
-            subtitle: "KeySwitch может следовать системной теме macOS"
+            title: "Вид и запуск",
+            subtitle: "Настройте тему, запуск и значок приложения."
         )
         let themeCard = card(height: 155)
         themeCard.stack.addArrangedSubview(sectionCardHeader(
             symbolName: "circle.lefthalf.filled",
             title: "Тема приложения",
-            subtitle: "Системная тема выбрана по умолчанию",
-            tint: .controlAccentColor
+            subtitle: "Выберите светлую, тёмную или тему macOS.",
+            tint: UIStyle.accent
         ))
         let theme = NSSegmentedControl(
             labels: AppTheme.allCases.map(\.displayTitle),
@@ -644,6 +620,7 @@ final class SettingsWindowController: NSWindowController,
             target: self,
             action: #selector(changeTheme(_:))
         )
+        theme.setAccessibilityLabel("Тема приложения")
         theme.selectedSegment = AppTheme.allCases.firstIndex(
             of: preferences.appTheme
         ) ?? 0
@@ -653,20 +630,11 @@ final class SettingsWindowController: NSWindowController,
         themeCard.stack.addArrangedSubview(theme)
         stack.addArrangedSubview(themeCard.view)
 
-        let glass = card(height: 125)
-        glass.stack.addArrangedSubview(sectionCardHeader(
-            symbolName: "sparkles",
-            title: "Liquid Glass",
-            subtitle: "На новых версиях macOS используется системный стеклянный материал.",
-            tint: .controlAccentColor
-        ))
-        glass.stack.addArrangedSubview(label(
-            "На macOS 13–15 KeySwitch автоматически применяет совместимый системный материал.",
-            size: 12,
-            color: .secondaryLabelColor,
-            wrapping: true
-        ))
-        stack.addArrangedSubview(glass.view)
+        let launch = card(height: 166)
+        launch.stack.addArrangedSubview(label("Запуск и значок", size: 15, weight: .semibold))
+        launch.stack.addArrangedSubview(settingRow(title: "Только в строке меню", subtitle: "Без значка в Dock. Окно открывается из меню KeySwitch.", state: preferences.menuBarOnly, action: #selector(toggleMenuBarOnly(_:))))
+        launch.stack.addArrangedSubview(settingRow(title: "Открывать при входе в Mac", subtitle: "KeySwitch запустится вместе с системой", state: SMAppService.mainApp.status == .enabled, action: #selector(toggleLogin(_:))))
+        stack.addArrangedSubview(launch.view)
         stack.addArrangedSubview(footerView())
         return view
     }
@@ -690,6 +658,7 @@ final class SettingsWindowController: NSWindowController,
         let github = NSButton(title: "GitHub",
                               target: self,
                               action: #selector(openGitHub))
+        github.imagePosition = .imageLeading
         github.image = symbol("link", pointSize: 12)
         appRow.addArrangedSubview(github)
         app.stack.addArrangedSubview(appRow)
@@ -697,9 +666,9 @@ final class SettingsWindowController: NSWindowController,
 
         let update = card(height: 190)
         let status = label("Проверка обновлений", size: 16, weight: .semibold)
-        let detail = label("Нажмите кнопку, чтобы проверить GitHub Releases.",
+        let detail = label("Проверьте, есть ли новая версия KeySwitch.",
                            size: 12,
-                           color: .secondaryLabelColor,
+                           color: UIStyle.secondaryText,
                            wrapping: true)
         updateStatusLabel = status
         updateDetailLabel = detail
@@ -763,7 +732,7 @@ final class SettingsWindowController: NSWindowController,
         let document = FlippedDocumentView()
         document.translatesAutoresizingMaskIntoConstraints = false
         scroll.documentView = document
-        let stack = NSStackView()
+        let stack = SectionStackView()
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 16
@@ -771,15 +740,15 @@ final class SettingsWindowController: NSWindowController,
         document.addSubview(stack)
         NSLayoutConstraint.activate([
             document.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor),
-            stack.leadingAnchor.constraint(equalTo: document.leadingAnchor, constant: 28),
-            stack.trailingAnchor.constraint(equalTo: document.trailingAnchor, constant: -34),
-            stack.topAnchor.constraint(equalTo: document.topAnchor, constant: 28),
+            stack.leadingAnchor.constraint(equalTo: document.leadingAnchor, constant: 24),
+            stack.trailingAnchor.constraint(equalTo: document.trailingAnchor, constant: -24),
+            stack.topAnchor.constraint(equalTo: document.topAnchor, constant: 24),
             stack.bottomAnchor.constraint(equalTo: document.bottomAnchor, constant: -24)
         ])
-        let titleLabel = label(title, size: 27, weight: .bold)
+        let titleLabel = label(title, size: 23, weight: .semibold)
         let subtitleLabel = label(subtitle,
                                   size: 13,
-                                  color: .secondaryLabelColor)
+                                  color: UIStyle.secondaryText)
         stack.addArrangedSubview(titleLabel)
         stack.setCustomSpacing(2, after: titleLabel)
         stack.addArrangedSubview(subtitleLabel)
@@ -790,7 +759,6 @@ final class SettingsWindowController: NSWindowController,
     private func card(height: CGFloat) -> (view: CardView, stack: NSStackView) {
         let view = CardView()
         view.translatesAutoresizingMaskIntoConstraints = false
-        view.heightAnchor.constraint(equalToConstant: height).isActive = true
         let stack = NSStackView()
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -801,9 +769,9 @@ final class SettingsWindowController: NSWindowController,
             stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
             stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
             stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 18),
-            stack.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor, constant: -16)
+            stack.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -16)
         ])
-        view.widthAnchor.constraint(greaterThanOrEqualToConstant: 580).isActive = true
+
         return (view, stack)
     }
 
@@ -816,8 +784,8 @@ final class SettingsWindowController: NSWindowController,
         row.alignment = .centerY
         row.spacing = 14
         let icon = NSImageView(image: symbol(symbolName,
-                                             pointSize: 23,
-                                             color: tint) ?? NSImage())
+                                             pointSize: 18,
+                                             color: UIStyle.secondaryText) ?? NSImage())
         icon.widthAnchor.constraint(equalToConstant: 28).isActive = true
         row.addArrangedSubview(icon)
         row.addArrangedSubview(verticalLabels(title: title, subtitle: subtitle))
@@ -836,7 +804,7 @@ final class SettingsWindowController: NSWindowController,
                                               subtitle: subtitle,
                                               compact: true))
         row.addArrangedSubview(spacer())
-        row.addArrangedSubview(switchButton(state: state, action: action))
+        row.addArrangedSubview(switchButton(accessibilityLabel: title, state: state, action: action))
         return row
     }
 
@@ -857,7 +825,7 @@ final class SettingsWindowController: NSWindowController,
         stack.addArrangedSubview(label(
             subtitle,
             size: compact ? 11 : 12,
-            color: light ? NSColor.white.withAlphaComponent(0.82) : .secondaryLabelColor,
+            color: light ? NSColor.white.withAlphaComponent(1) : UIStyle.secondaryText,
             wrapping: true
         ))
         return stack
@@ -867,16 +835,16 @@ final class SettingsWindowController: NSWindowController,
         let row = NSStackView()
         row.orientation = .horizontal
         row.alignment = .centerY
-        let access = label(monitor.isTrusted ? "● Доступ разрешён" : "● Требуется доступ",
+        let access = label(monitor.isTrusted ? "Доступ разрешён" : "Нужен доступ macOS",
                            size: 11,
-                           color: monitor.isTrusted ? .systemGreen : .systemOrange)
+                           color: UIStyle.secondaryText)
         accessStatusLabel = access
         row.addArrangedSubview(access)
         row.addArrangedSubview(spacer())
         row.addArrangedSubview(label(
-            "Все данные обрабатываются на этом Mac",
+            "Текст остаётся на этом Mac",
             size: 11,
-            color: .tertiaryLabelColor
+            color: UIStyle.secondaryText
         ))
         return row
     }
@@ -889,7 +857,9 @@ final class SettingsWindowController: NSWindowController,
         let field = wrapping
             ? NSTextField(wrappingLabelWithString: value)
             : NSTextField(labelWithString: value)
+        field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         field.font = .systemFont(ofSize: size, weight: weight)
+        field.setContentCompressionResistancePriority(.required, for: .vertical)
         field.textColor = color
         return field
     }
@@ -908,10 +878,12 @@ final class SettingsWindowController: NSWindowController,
     }
 
     private func switchButton(title: String = "",
+                              accessibilityLabel: String? = nil,
                               state: Bool,
                               action: Selector) -> NSButton {
         let button = NSButton(title: title, target: self, action: action)
         button.setButtonType(.switch)
+        button.setAccessibilityLabel(accessibilityLabel ?? title)
         button.state = state ? .on : .off
         return button
     }
@@ -919,7 +891,7 @@ final class SettingsWindowController: NSWindowController,
     private func linkButton(_ title: String, action: Selector) -> NSButton {
         let button = NSButton(title: title, target: self, action: action)
         button.isBordered = false
-        button.contentTintColor = .controlAccentColor
+        button.contentTintColor = UIStyle.accent
         button.font = .systemFont(ofSize: 12, weight: .medium)
         return button
     }
@@ -932,9 +904,7 @@ final class SettingsWindowController: NSWindowController,
             .withSymbolConfiguration(.init(pointSize: pointSize,
                                            weight: .medium))
         image?.isTemplate = true
-        if color != nil {
-            image?.accessibilityDescription = name
-        }
+        // Section icons are decorative; adjacent text supplies their meaning.
         return image
     }
 
@@ -957,6 +927,7 @@ final class SettingsWindowController: NSWindowController,
         appTable.rowHeight = 52
         appTable.backgroundColor = .clear
         appTable.selectionHighlightStyle = .regular
+        appTable.setAccessibilityLabel("Приложения, исключённые из исправления")
     }
 
     func numberOfRows(in tableView: NSTableView) -> Int {
@@ -973,7 +944,7 @@ final class SettingsWindowController: NSWindowController,
         icon.imageScaling = .scaleProportionallyUpOrDown
         icon.translatesAutoresizingMaskIntoConstraints = false
         let labels = verticalLabels(title: application.name,
-                                    subtitle: bundleID,
+                                    subtitle: "В этом приложении исправление выключено",
                                     compact: true)
         labels.translatesAutoresizingMaskIntoConstraints = false
         cell.addSubview(icon)
@@ -992,12 +963,18 @@ final class SettingsWindowController: NSWindowController,
 
     @objc private func toggleEnabled(_ sender: NSButton) {
         preferences.enabled = sender.state == .on
+        monitor.invalidateContext()
         NotificationCenter.default.post(name: .keySwitchStateChanged, object: nil)
-        showSection(.general)
+        refresh()
     }
 
     @objc private func toggleSound(_ sender: NSButton) {
         preferences.playSound = sender.state == .on
+    }
+
+    @objc private func toggleMenuBarOnly(_ sender: NSButton) {
+        preferences.menuBarOnly = sender.state == .on
+        NotificationCenter.default.post(name: .keySwitchStateChanged, object: nil)
     }
 
     @objc private func toggleLogin(_ sender: NSButton) {
@@ -1019,6 +996,35 @@ final class SettingsWindowController: NSWindowController,
               sender.selectedSegment < modes.count else { return }
         preferences.spellingMode = modes[sender.selectedSegment]
         showSection(.spelling)
+    }
+
+    func controlTextDidEndEditing(_ notification: Notification) {
+        if let field = notification.object as? NSTextField, field === ignoredWordsField { saveIgnoredWords() }
+    }
+
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        removeApplicationButton?.isEnabled = appTable.selectedRow >= 0
+    }
+
+    @objc private func retryMonitor() {
+        monitor.resetRetry()
+        monitor.start()
+        refresh()
+        NotificationCenter.default.post(name: .keySwitchStateChanged, object: nil)
+    }
+
+    @objc private func testCorrection() {
+        guard let field = testField else { return }
+        let text = field.stringValue
+        guard text.count <= 64 else {
+            testResultLabel?.stringValue = "Введите одно короткое слово (до 64 символов)."
+            return
+        }
+        if let correction = LanguageEngine().correction(for: text, ignored: preferences.ignoredWords) {
+            testResultLabel?.stringValue = "\(text) → \(correction.replacement). В других приложениях нужен доступ macOS."
+        } else {
+            testResultLabel?.stringValue = "Замена не требуется. Попробуйте ghbdtn или руддщ."
+        }
     }
 
     @objc private func saveIgnoredWords() {
@@ -1072,7 +1078,9 @@ final class SettingsWindowController: NSWindowController,
         }
         if let error = updateChecker.lastError {
             updateStatusLabel.stringValue = "Не удалось проверить обновления"
-            updateDetailLabel.stringValue = error.localizedDescription
+            updateDetailLabel.stringValue = (error as? URLError)?.code == .notConnectedToInternet
+                ? "Нет соединения. Подключитесь к интернету и нажмите «Повторить»."
+                : "GitHub недоступен или ответ не удалось прочитать. Повторите проверку позже."
             updateActionButton.title = "Повторить"
             return
         }
@@ -1088,14 +1096,20 @@ final class SettingsWindowController: NSWindowController,
             pendingUpdateURL = update.downloadURL
         case nil:
             updateStatusLabel.stringValue = "Проверка обновлений"
-            updateDetailLabel.stringValue = "Нажмите кнопку, чтобы проверить GitHub Releases."
+            updateDetailLabel.stringValue = "Проверьте, есть ли новая версия KeySwitch."
             updateActionButton.title = "Проверить обновления"
         }
     }
 
     @objc private func requestAccess() {
         monitor.requestPermission()
+        NSWorkspace.shared.open(URL(string:
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
         showSection(.permissions)
+    }
+
+    @objc private func revealApplication() {
+        NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
     }
 
     @objc private func addApplication() {
@@ -1113,7 +1127,8 @@ final class SettingsWindowController: NSWindowController,
                   let bundleID = Bundle(url: url)?.bundleIdentifier else { return }
             if !self.preferences.excludedApps.contains(bundleID) {
                 self.preferences.excludedApps.append(bundleID)
-                self.appTable.reloadData()
+                self.monitor.invalidateContext()
+                self.refresh()
             }
         }
     }
@@ -1122,7 +1137,8 @@ final class SettingsWindowController: NSWindowController,
         let row = appTable.selectedRow
         guard row >= 0, row < preferences.excludedApps.count else { return }
         preferences.excludedApps.remove(at: row)
-        appTable.reloadData()
+        appTable.deselectAll(nil)
+        refresh()
     }
 
     @objc private func openSpellingSection() {
@@ -1146,13 +1162,34 @@ final class SettingsWindowController: NSWindowController,
         }
     }
 
+    func commitPendingEdits() { saveIgnoredWords() }
+
     func refresh() {
-        appTable.reloadData()
-        correctionCountLabel?.stringValue = "\(preferences.correctionCount) исправлений"
+        let state = monitor.state
+        if renderedMonitorState != state && selectedSection == .permissions {
+            showSection(.permissions)
+            return
+        }
+        renderedMonitorState = state
+        let statusSymbol = state == .ready ? "checkmark.circle.fill"
+            : state == .paused ? "pause.circle.fill" : "exclamationmark.triangle.fill"
+        statusIcon?.image = symbol(statusSymbol, pointSize: 25, color: UIStyle.accent)
+        statusTitleLabel?.stringValue = state.title
+        statusDetailLabel?.stringValue = state.detail
+        enabledControl?.state = preferences.enabled ? .on : .off
+        if selectedSection == .exclusions {
+            let selection = appTable.selectedRow
+            appTable.reloadData()
+            if selection >= 0 && selection < preferences.excludedApps.count {
+                appTable.selectRowIndexes(IndexSet(integer: selection), byExtendingSelection: false)
+            }
+            removeApplicationButton?.isEnabled = appTable.selectedRow >= 0
+            emptyExclusionsLabel?.isHidden = !preferences.excludedApps.isEmpty
+        }
         accessStatusLabel?.stringValue = monitor.isTrusted
-            ? "● Доступ разрешён"
-            : "● Требуется доступ"
-        accessStatusLabel?.textColor = monitor.isTrusted ? .systemGreen : .systemOrange
+            ? "Доступ разрешён"
+            : "Нужен доступ macOS"
+        accessStatusLabel?.textColor = UIStyle.secondaryText
         spellingModeControl?.selectedSegment = SpellingMode.allCases.firstIndex(
             of: preferences.spellingMode
         ) ?? 0
@@ -1176,7 +1213,10 @@ final class SettingsWindowController: NSWindowController,
                 NSWorkspace.shared.icon(forFile: url.path)
             )
         }
-        let fallback = bundleID.split(separator: ".").last.map(String.init) ?? bundleID
+        let knownNames = ["com.apple.dt.Xcode": "Xcode", "com.microsoft.VSCode": "Visual Studio Code",
+                          "com.jetbrains.intellij": "IntelliJ IDEA", "com.jetbrains.AppCode": "AppCode",
+                          "com.unity3d.UnityEditor5.x": "Unity"]
+        let fallback = knownNames[bundleID] ?? bundleID.split(separator: ".").last.map(String.init) ?? bundleID
         let icon = NSImage(systemSymbolName: "app",
                            accessibilityDescription: "Приложение") ?? NSImage()
         return (fallback.prefix(1).uppercased() + fallback.dropFirst(), icon)

@@ -2,64 +2,95 @@ import AppKit
 
 final class SpellingIndicator {
     private let panel: NSPanel
-    private let label = NSTextField(labelWithString: "")
-    private var hideWorkItem: DispatchWorkItem?
+    private let label = NSTextField(wrappingLabelWithString: "")
+    private let stack = NSStackView()
+    private var word = ""
+    var onIgnore: ((String) -> Void)?
+    var onDismiss: (() -> Void)?
 
     init() {
-        panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 360, height: 48),
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false
-        )
+        panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 420, height: 144),
+                        styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        panel.ignoresMouseEvents = true
         panel.hasShadow = true
         panel.isOpaque = false
         panel.backgroundColor = .clear
-
         let background = NSVisualEffectView()
         background.material = .hudWindow
         background.state = .active
         background.wantsLayer = true
-        background.layer?.cornerRadius = 10
-        background.layer?.borderWidth = 1
-        background.layer?.borderColor = NSColor.systemRed.withAlphaComponent(0.8).cgColor
-        background.translatesAutoresizingMaskIntoConstraints = false
+        background.layer?.cornerRadius = 12
         panel.contentView = background
-
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 10
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        background.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: 16),
+            stack.trailingAnchor.constraint(equalTo: background.trailingAnchor, constant: -16),
+            stack.topAnchor.constraint(equalTo: background.topAnchor, constant: 14),
+            stack.bottomAnchor.constraint(lessThanOrEqualTo: background.bottomAnchor, constant: -14)
+        ])
         label.font = .systemFont(ofSize: 14, weight: .medium)
         label.textColor = .labelColor
-        label.lineBreakMode = .byTruncatingMiddle
-        label.translatesAutoresizingMaskIntoConstraints = false
-        background.addSubview(label)
-        NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: 14),
-            label.trailingAnchor.constraint(equalTo: background.trailingAnchor, constant: -14),
-            label.centerYAnchor.constraint(equalTo: background.centerYAnchor)
-        ])
+        label.setContentCompressionResistancePriority(.required, for: .vertical)
+        stack.addArrangedSubview(label)
+        label.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        let hint = NSTextField(wrappingLabelWithString:
+            "Двойной Shift — применить до следующего ввода. Esc — закрыть. При смене поля замена отменяется.")
+        hint.font = .systemFont(ofSize: 12)
+        hint.textColor = .secondaryLabelColor
+        hint.setContentCompressionResistancePriority(.required, for: .vertical)
+        stack.addArrangedSubview(hint)
+        hint.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        let actions = NSStackView()
+        actions.orientation = .horizontal
+        actions.spacing = 10
+        actions.addArrangedSubview(NSButton(title: "Не исправлять это слово", target: self,
+                                            action: #selector(ignoreWord)))
+        actions.addArrangedSubview(NSButton(title: "Закрыть", target: self, action: #selector(dismiss)))
+        stack.addArrangedSubview(actions)
     }
 
     func show(word: String, suggestion: String) {
-        hideWorkItem?.cancel()
-        label.stringValue = "Опечатка: \(word)  →  \(suggestion)"
-
-        let screen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) })
-            ?? NSScreen.main
-        if let visibleFrame = screen?.visibleFrame {
-            let origin = NSPoint(
-                x: visibleFrame.maxX - panel.frame.width - 18,
-                y: visibleFrame.maxY - panel.frame.height - 18
-            )
-            panel.setFrameOrigin(origin)
+        self.word = word
+        label.stringValue = "Возможная опечатка: \(word) → \(suggestion)"
+        panel.contentView?.layoutSubtreeIfNeeded()
+        panel.setContentSize(NSSize(width: 420, height: max(144, stack.fittingSize.height + 28)))
+        let screen = NSScreen.main
+        if let frame = screen?.visibleFrame {
+            panel.setFrameOrigin(NSPoint(x: frame.maxX - panel.frame.width - 18,
+                                         y: frame.maxY - panel.frame.height - 18))
         }
         panel.orderFrontRegardless()
+        NSAccessibility.post(element: panel, notification: .announcementRequested,
+                             userInfo: [.announcement: label.stringValue + ". " +
+                                        "Двойной Shift — применить. Esc — закрыть.",
+                                        .priority: NSAccessibilityPriorityLevel.medium.rawValue])
+    }
 
-        let workItem = DispatchWorkItem { [weak self] in
-            self?.panel.orderOut(nil)
-        }
-        hideWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.4, execute: workItem)
+    func contains(eventPoint: CGPoint) -> Bool {
+        guard panel.isVisible else { return false }
+        let point = NSPoint(x: eventPoint.x,
+                            y: (NSScreen.screens.first?.frame.maxY ?? 0) - eventPoint.y)
+        return panel.frame.contains(point)
+    }
+
+    func hide() {
+        panel.orderOut(nil)
+        word = ""
+        label.stringValue = ""
+    }
+
+    @objc private func ignoreWord() {
+        onIgnore?(word)
+        hide()
+    }
+
+    @objc private func dismiss() {
+        onDismiss?()
+        hide()
     }
 }

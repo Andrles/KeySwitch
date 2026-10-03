@@ -178,6 +178,10 @@ struct LanguageEngine {
     }
 
     func correction(for word: String, ignored: Set<String> = []) -> Correction? {
+        guard word.count <= 64 else { return nil }
+        let protectedCore = TextToken(word).word
+        if isKnownWord(protectedCore) || ignored.contains(protectedCore.lowercased()) { return nil }
+        if TextToken.isIdentifier(protectedCore) || (word.count <= 2 && word.hasSuffix(":")), canonicalModel(convert(word, to: .english)) == nil { return nil }
         if let correction = correctionForBareWord(word, ignored: ignored) {
             return correction
         }
@@ -198,17 +202,18 @@ struct LanguageEngine {
         let normalized = word.lowercased()
         guard !word.isEmpty, !ignored.contains(normalized) else { return nil }
 
-        let hasLatin = word.unicodeScalars.contains { (0x0041...0x007A).contains(Int($0.value)) }
+        let hasLatin = word.unicodeScalars.contains { (0x0041...0x005A).contains(Int($0.value)) || (0x0061...0x007A).contains(Int($0.value)) }
         let hasCyrillic = word.unicodeScalars.contains { (0x0400...0x04FF).contains(Int($0.value)) }
         guard hasLatin != hasCyrillic else { return nil }
 
         if hasLatin {
             let converted = convert(word, to: .russian)
-            let replacement = normalizedName(converted, language: .russian)
+            let replacement = converted
             let sourceScore = englishScore(normalized)
             let targetScore = russianScore(replacement.lowercased())
             let minimumTargetScore = word.count <= 2 ? 12 : 4
-            if targetScore >= minimumTargetScore && targetScore - sourceScore >= 3 {
+            if isKnownWord(replacement),
+               word.count > 2 || (Self.englishWords.contains(replacement.lowercased()) || Self.russianWords.contains(replacement.lowercased())), targetScore >= minimumTargetScore && targetScore - sourceScore >= 3 {
                 return Correction(original: word, replacement: replacement, language: .russian)
             }
         } else {
@@ -218,11 +223,12 @@ struct LanguageEngine {
                                   replacement: identifier,
                                   language: .english)
             }
-            let replacement = normalizedName(converted, language: .english)
+            let replacement = converted
             let sourceScore = russianScore(normalized)
             let targetScore = englishScore(replacement.lowercased())
             let minimumTargetScore = word.count <= 2 ? 12 : 4
-            if targetScore >= minimumTargetScore && targetScore - sourceScore >= 3 {
+            if isKnownWord(replacement),
+               word.count > 2 || (Self.englishWords.contains(replacement.lowercased()) || Self.russianWords.contains(replacement.lowercased())), targetScore >= minimumTargetScore && targetScore - sourceScore >= 3 {
                 return Correction(original: word, replacement: replacement, language: .english)
             }
         }
@@ -231,10 +237,17 @@ struct LanguageEngine {
 
     private func canonicalLatinIdentifier(_ candidate: String) -> String? {
         let normalized = candidate.lowercased()
-        if let brand = Self.latinBrands[normalized] {
-            return brand
+        if candidate.count > 2, Self.latinBrands[normalized] != nil {
+            return candidate
         }
 
+        return canonicalModel(candidate)
+    }
+
+    private func canonicalModel(_ candidate: String) -> String? {
+        // Only known model families; arbitrary Cyrillic abbreviations are never models.
+        let family = candidate.prefix(while: { $0.isLetter }).uppercased()
+        guard ["X", "Q", "CX", "GLE"].contains(family) else { return nil }
         let characters = Array(candidate)
         guard (2...10).contains(characters.count),
               characters.contains(where: \.isNumber),
@@ -276,7 +289,7 @@ struct LanguageEngine {
 
     private func splitOuterPunctuation(from token: String)
         -> (leading: String, word: String, trailing: String) {
-        let punctuation = "`[];',.~{}:\"<>«»„“”‘’()"
+        let punctuation = "`[];',.~{}:\"<>«»„“”‘’()!?…"
         var word = token
         var leading = ""
         var trailing = ""
@@ -293,7 +306,7 @@ struct LanguageEngine {
 
     func detectedLanguage(for word: String) -> Language? {
         let normalized = word.lowercased()
-        let hasLatin = word.unicodeScalars.contains { (0x0041...0x007A).contains(Int($0.value)) }
+        let hasLatin = word.unicodeScalars.contains { (0x0041...0x005A).contains(Int($0.value)) || (0x0061...0x007A).contains(Int($0.value)) }
         let hasCyrillic = word.unicodeScalars.contains { (0x0400...0x04FF).contains(Int($0.value)) }
         guard hasLatin != hasCyrillic else { return nil }
 
@@ -304,17 +317,75 @@ struct LanguageEngine {
     }
 
     func spellingSuggestion(for word: String, language: Language) -> String? {
-        let name = normalizedName(word, language: language)
+        guard word.count > 2, word.count <= 64 else { return nil }
+        let normalized = word.lowercased()
+        let vocabulary = language == .english ? Self.englishWords : Self.russianWords
+        let names = language == .english ? Self.englishNames : Self.russianNames
+        guard !LocalLexicon.contains(word), !TextToken.isIdentifier(word),
+              !TextToken.hasProtectedCase(word),
+              !vocabulary.contains(normalized), !names.contains(normalized),
+              !systemDictionary.contains(word, language: language) else { return nil }
+        // A name-like typo may be suggested, but ordinary lowercase words must
+        // never be silently promoted to names.
+        let name = word.first?.isUppercase == true ? normalizedName(word, language: language) : word
         if name != word {
             return name
         }
         return systemDictionary.suggestion(for: word, language: language)
     }
 
+    private func isKnownWord(_ word: String) -> Bool {
+        let normalized = word.lowercased()
+        if Self.englishWords.contains(normalized) || Self.russianWords.contains(normalized) ||
+           Self.englishNames.contains(normalized) || Self.russianNames.contains(normalized) ||
+           LocalLexicon.contains(word) { return true }
+        // A spell service may accept fragments separated by punctuation. Require a word.
+        guard word.count > 2, word.first?.isLetter == true, word.last?.isLetter == true, word.allSatisfy({ $0.isLetter || $0 == "-" || $0 == "'" || $0 == "’" }),
+              (!word.contains("-") || word.split(separator: "-").allSatisfy({ $0.count >= 3 })),
+              let language = scriptLanguage(word) else { return false }
+        return systemDictionary.contains(word, language: language)
+    }
+
+    private func scriptLanguage(_ word: String) -> Language? {
+        let latin = word.unicodeScalars.contains { (65...90).contains(Int($0.value)) || (97...122).contains(Int($0.value)) }
+        let russian = word.unicodeScalars.contains { (0x0410...0x044F).contains(Int($0.value)) || $0.value == 0x0401 || $0.value == 0x0451 }
+        guard latin != russian else { return nil }
+        return russian ? .russian : .english
+    }
+
+    func spellingCorrection(for token: String, automatic: Bool) -> Correction? {
+        let parts = TextToken(token)
+        guard !TextToken.isIdentifier(parts.word), let language = scriptLanguage(parts.word) else { return nil }
+        let replacement = automatic
+            ? automaticSpellingCorrection(for: parts.word, language: language)
+            : spellingSuggestion(for: parts.word, language: language)
+        guard let replacement else { return nil }
+        return Correction(original: token, replacement: parts.wrapping(replacement), language: language)
+    }
+
+    /// Only unambiguous curated typos can be replaced automatically. Other guesses are hints.
+    func automaticSpellingCorrection(for word: String, language: Language) -> String? {
+        guard !isKnownWord(word), !TextToken.isIdentifier(word),
+              !TextToken.hasProtectedCase(word) || word.filter(\.isLetter).allSatisfy(\.isUppercase) else { return nil }
+        let fixes = language == .english ? [
+            "recieve": "receive", "langauge": "language", "definately": "definitely",
+            "occured": "occurred", "seperate": "separate", "accomodate": "accommodate",
+            "wierd": "weird", "quikc": "quick", "programmng": "programming"
+        ] : [
+            "пожалуйсто": "пожалуйста", "здраствуйте": "здравствуйте",
+            "програмирование": "программирование", "симпотичный": "симпатичный",
+            "агенство": "агентство", "будующий": "будущий", "сдесь": "здесь",
+            "жыраф": "жираф", "щюка": "щука"
+        ]
+        guard let replacement = fixes[word.lowercased()] else { return nil }
+        return TextToken.applyingCase(of: word, to: replacement)
+    }
+
     private func englishScore(_ word: String) -> Int {
+        if LocalLexicon.contains(word), !word.unicodeScalars.contains(where: { (0x0400...0x04FF).contains(Int($0.value)) }) { return 16 }
         if Self.englishWords.contains(word) { return 12 }
         if Self.englishNames.contains(word) { return 14 }
-        if word.count > 2, systemDictionary.contains(word, language: .english) { return 16 }
+        if scriptLanguage(word) == .english, isKnownWord(word) { return 16 }
         var score = 0
         let common = ["th", "he", "in", "er", "an", "re", "on", "at", "en", "nd",
                       "tion", "ing", "ed", "ou", "ea", "st", "to", "it", "is"]
@@ -328,9 +399,10 @@ struct LanguageEngine {
     }
 
     private func russianScore(_ word: String) -> Int {
+        if LocalLexicon.contains(word), word.unicodeScalars.contains(where: { (0x0400...0x04FF).contains(Int($0.value)) }) { return 16 }
         if Self.russianWords.contains(word) { return 12 }
         if Self.russianNames.contains(word) { return 14 }
-        if word.count > 2, systemDictionary.contains(word, language: .russian) { return 16 }
+        if scriptLanguage(word) == .russian, isKnownWord(word) { return 16 }
         var score = 0
         let common = ["ст", "но", "то", "на", "ен", "ов", "ни", "ра", "во", "ко",
                       "пр", "по", "ро", "ал", "ль", "ого", "ени", "ать", "ить"]
@@ -358,9 +430,12 @@ struct LanguageEngine {
 
     private func normalizedName(_ word: String, language: Language) -> String {
         let normalized = word.lowercased()
+        let vocabulary = language == .english ? Self.englishWords : Self.russianWords
+        if vocabulary.contains(normalized) { return word }
         let names = language == .russian ? Self.russianNames : Self.englishNames
-        guard !names.contains(normalized) else { return word }
+        guard word.count <= 64, !names.contains(normalized) else { return word }
         guard let nearest = names
+            .filter({ abs($0.count - normalized.count) <= 1 })
             .map({ ($0, editDistance(normalized, $0)) })
             .filter({ $0.1 == 1 })
             .sorted(by: { $0.0 < $1.0 })

@@ -1,0 +1,17 @@
+#!/bin/bash
+set -euo pipefail
+volume="${3:-/}"
+applications="${volume%/}/Applications"
+installed="$applications/KeySwitch.app"
+# Cleanup only after the replacement is installed and its signature verifies.
+/usr/bin/codesign --verify --deep --strict "$installed"
+identifier=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$installed/Contents/Info.plist")
+[[ "$identifier" == local.keyswitch.app ]] || exit 1
+for app in "$applications"/*.app; do
+    [[ "$app" != "$installed" && -d "$app" && ! -L "$app" ]] || continue
+    identifier=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist" 2>/dev/null) || continue
+    [[ "$identifier" == local.keyswitch.app ]] || continue
+    /bin/rm -rf -- "$app"
+done
+# User preferences and Accessibility settings are deliberately untouched.
+exit 0

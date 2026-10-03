@@ -1,5 +1,16 @@
 # История изменений
 
+## Unreleased
+
+- Исправлена подпись локальной сборки: подписывается весь bundle с правильным идентификатором, подпись проверяется перед выдачей. Раздел разрешений открывает настройки macOS и показывает используемую копию приложения.
+
+- Проверка поля, курсора и исходного текста перед заменой; защищённые и неподдерживаемые поля пропускаются.
+- Восстановление последнего исправления двойным Shift до следующего ввода, смены контекста или 15 секунд.
+- Исправлены замена валидных слов на имена и рекурсивный запуск после отказа перехвата.
+- Правдивые состояния готовности, доступные имена controls и контентные размеры настроек.
+- Управляемые подсказки, локальный пример, сохранение исключённых слов, bounded caches и retries; Reduce Motion.
+- Голос, AI и новые ОС отложены в ROADMAP.md.
+
 Все заметные изменения KeySwitch фиксируются в этом файле.
 
 ## 3.0.1 — 2026-07-31
@@ -147,3 +158,36 @@
 
 - добавление активного приложения в исключения из меню в строке меню;
 - названия и иконки приложений в списке исключений.
+
+
+## 3.0.2 — window and installation hotfix
+
+- Fix settings controller initialization that created no window on launch.
+- Open settings before background services; explicitly route tray menu actions.
+- Add an isolated launch/reopen check without input monitoring or network.
+- Installer replaces the canonical app, stops verified KeySwitch processes and
+  removes older same-identifier copies in /Applications while preserving preferences.
+
+- Installer hotfix: handle zero running processes under macOS Bash 3.2; add
+  regression coverage for the live-volume preinstall branch.
+
+
+## 3.1.0
+
+- Simplify settings with neutral native surfaces, readable captions and plain labels.
+- Focus the main screen on layout correction and a safe local example.
+- Replace the glossy app icon with flat A/Я keys and use a native keyboard symbol
+  in the menu bar; remove rotating letter animations.
+- Add persistent menu-bar-only mode, enabled by default. Opening settings no longer
+  adds a Dock icon. Keep an optional Dock toggle under appearance/startup settings.
+- Add isolated UI preview and launch checks; verify hide/reopen and Dock switching.
+
+## 3.1.1
+
+- Protect correct vocabulary, proper names, technical terms, abbreviations and identifiers before layout conversion.
+- Remove approximate name rewriting and preserve case when converting brands. Restrict automatic model recognition to established model families.
+- Use curated common typo rules for automatic spelling; keep ambiguous spell-check guesses as explicit suggestions.
+- Cache case-neutral guesses and apply capitalization per request, including ALL CAPS.
+- Share punctuation parsing between spelling and layout; fix spelling inside quotes/brackets and recognize Tab as a word boundary.
+- Skip automatic edits at address/path/code separators, protect drive prefixes and long Unicode event buffers.
+- Add offline vocabulary, deterministic stress audit and strict regressions for the reproduced defects.

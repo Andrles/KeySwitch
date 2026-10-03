@@ -3,7 +3,7 @@ import AppKit
 final class SystemDictionary {
     static let shared = SystemDictionary()
 
-    private let checker = NSSpellChecker.shared
+    private lazy var checker = NSSpellChecker.shared
     private var cache: [String: Bool] = [:]
     private var suggestionCache: [String: String] = [:]
     private var noSuggestionCache: Set<String> = []
@@ -13,6 +13,7 @@ final class SystemDictionary {
     private init() {}
 
     func contains(_ word: String, language: Language) -> Bool {
+        guard !word.isEmpty, word.count <= 64 else { return false }
         let normalized = word.lowercased()
         let key = "\(language.rawValue):\(normalized)"
 
@@ -36,6 +37,7 @@ final class SystemDictionary {
     }
 
     func suggestion(for word: String, language: Language) -> String? {
+        guard !word.isEmpty, word.count <= 64 else { return nil }
         let normalized = word.lowercased()
         let key = "\(language.rawValue):\(normalized)"
 
@@ -43,7 +45,10 @@ final class SystemDictionary {
         defer { lock.unlock() }
 
         if let cached = suggestionCache[key] {
-            return cached
+            return TextToken.applyingCase(of: word, to: cached)
+        }
+        if noSuggestionCache.count >= 2_000 {
+            noSuggestionCache.removeAll(keepingCapacity: true)
         }
         if noSuggestionCache.contains(key) {
             return nil
@@ -69,13 +74,13 @@ final class SystemDictionary {
             return nil
         }
 
-        let result = preserveCapitalization(from: word, in: guess)
+        let result = guess.lowercased()
         if suggestionCache.count >= 10_000 {
             suggestionCache.removeAll(keepingCapacity: true)
             noSuggestionCache.removeAll(keepingCapacity: true)
         }
         suggestionCache[key] = result
-        return result
+        return TextToken.applyingCase(of: word, to: result)
     }
 
     private func dictionaryIsAvailable(for language: Language) -> Bool {
@@ -114,11 +119,6 @@ final class SystemDictionary {
 
     private func languageIdentifier(for language: Language) -> String {
         language == .russian ? "ru" : "en"
-    }
-
-    private func preserveCapitalization(from original: String, in replacement: String) -> String {
-        guard original.first?.isUppercase == true else { return replacement.lowercased() }
-        return replacement.prefix(1).uppercased() + replacement.dropFirst().lowercased()
     }
 
     private func editDistance(_ left: String, _ right: String) -> Int {

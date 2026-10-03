@@ -1,0 +1,33 @@
+#!/bin/bash
+set -euo pipefail
+# Only stop processes whose executable belongs to a verified KeySwitch bundle.
+# Alternate-volume installs must not stop the running system's application.
+[[ "${3:-/}" == / ]] || exit 0
+pids=()
+while read -r pid executable; do
+    [[ "$executable" == */Contents/MacOS/KeySwitch ]] || continue
+    bundle="${executable%/Contents/MacOS/KeySwitch}"
+    [[ ! -L "$bundle" && -f "$bundle/Contents/Info.plist" ]] || continue
+    identifier=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$bundle/Contents/Info.plist" 2>/dev/null) || continue
+    [[ "$identifier" == local.keyswitch.app ]] || continue
+    kill -TERM "$pid" 2>/dev/null || true
+    pids+=("$pid")
+done < <(/bin/ps -axo pid=,comm=)
+# Bash 3.2 treats an empty array as unset under nounset. Expand only when set.
+for pid in ${pids[@]+"${pids[@]}"}; do
+    for attempt in {1..10}; do
+        kill -0 "$pid" 2>/dev/null || break
+        sleep 1
+    done
+    if kill -0 "$pid" 2>/dev/null; then
+        echo 'KeySwitch is still running. Quit it and run the installer again.' >&2
+        exit 1
+    fi
+done
+# Do not replace an unrelated app which happens to have the same filename.
+app='/Applications/KeySwitch.app'
+if [[ -e "$app" || -L "$app" ]]; then
+    [[ ! -L "$app" ]] || exit 1
+    identifier=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist" 2>/dev/null) || exit 1
+    [[ "$identifier" == local.keyswitch.app ]] || exit 1
+fi

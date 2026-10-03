@@ -7,9 +7,9 @@ enum SpellingMode: String, CaseIterable {
 
     var displayTitle: String {
         switch self {
-        case .off: return "Выключена"
+        case .off: return "Не проверять"
         case .suggestions: return "Подсказки"
-        case .autoCorrect: return "Автоисправление"
+        case .autoCorrect: return "Исправлять"
         }
     }
 }
@@ -21,7 +21,7 @@ enum AppTheme: String, CaseIterable {
 
     var displayTitle: String {
         switch self {
-        case .system: return "Системная"
+        case .system: return "Как в macOS"
         case .light: return "Светлая"
         case .dark: return "Тёмная"
         }
@@ -29,6 +29,7 @@ enum AppTheme: String, CaseIterable {
 }
 
 enum PreferenceKey {
+    static let menuBarOnly = "menuBarOnly"
     static let enabled = "enabled"
     static let playSound = "playSound"
     static let launchAtLogin = "launchAtLogin"
@@ -45,15 +46,25 @@ enum PreferenceKey {
 }
 
 final class Preferences {
-    static let shared = Preferences()
-    let defaults = UserDefaults.standard
+    static let shared: Preferences = {
+        if CommandLine.arguments.contains("--ui-preview") || CommandLine.arguments.contains("--launch-check") {
+            let name = "local.keyswitch.preview.\(ProcessInfo.processInfo.processIdentifier)"
+            let defaults = UserDefaults(suiteName: name)!
+            defaults.removePersistentDomain(forName: name)
+            return Preferences(defaults: defaults)
+        }
+        return Preferences()
+    }()
+    let defaults: UserDefaults
 
-    private init() {
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
         let storedSpellingMode = defaults.string(forKey: PreferenceKey.spellingMode)
         let legacySpellChecking = defaults.object(forKey: PreferenceKey.spellChecking) as? Bool
         let legacyAutoCorrect = defaults.object(forKey: PreferenceKey.spellAutoCorrect) as? Bool
         defaults.register(defaults: [
             PreferenceKey.enabled: true,
+            PreferenceKey.menuBarOnly: true,
             PreferenceKey.playSound: true,
             PreferenceKey.excludedApps: [
                 "com.apple.dt.Xcode",
@@ -82,6 +93,11 @@ final class Preferences {
             }
             defaults.set(migrated.rawValue, forKey: PreferenceKey.spellingMode)
         }
+    }
+
+    var menuBarOnly: Bool {
+        get { defaults.bool(forKey: PreferenceKey.menuBarOnly) }
+        set { defaults.set(newValue, forKey: PreferenceKey.menuBarOnly) }
     }
 
     var enabled: Bool {

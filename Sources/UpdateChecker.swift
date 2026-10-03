@@ -70,6 +70,7 @@ final class UpdateChecker {
         }
     }
 
+    private var lastFailedAttempt: Date?
     private let preferences = Preferences.shared
     private let endpoint = URL(
         string: "https://api.github.com/repos/Andrles/KeySwitch/releases/latest"
@@ -85,6 +86,7 @@ final class UpdateChecker {
 
     var shouldCheckAutomatically: Bool {
         guard preferences.automaticallyChecksForUpdates else { return false }
+        if let lastFailedAttempt, Date().timeIntervalSince(lastFailedAttempt) < 5 * 60 { return false }
         guard let lastCheck = preferences.lastUpdateCheck else { return true }
         return Date().timeIntervalSince(lastCheck) >= 24 * 60 * 60
     }
@@ -117,12 +119,14 @@ final class UpdateChecker {
             }
             DispatchQueue.main.async {
                 self.isChecking = false
-                self.preferences.lastUpdateCheck = Date()
                 switch result {
                 case let .success(value):
+                    self.preferences.lastUpdateCheck = Date()
+                    self.lastFailedAttempt = nil
                     self.lastResult = value
                     self.lastError = nil
                 case let .failure(error):
+                    self.lastFailedAttempt = Date()
                     self.lastError = error
                 }
                 NotificationCenter.default.post(name: .keySwitchUpdateStateChanged,

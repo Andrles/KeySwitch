@@ -22,7 +22,7 @@ Menu-bar utility with a settings window. Global keyboard events and synthetic re
 
 ## Capabilities and Constraints
 
-Implemented: RU/EN conversion, system offline dictionaries and built-in names, spelling modes, ignored words, application exclusions, launch at login, appearance selection, optional GitHub release checks.
+Implemented in 3.2.0 (local package verified; validation limits documented below): guarded selected-text layout/case editing, configurable manual commands, learned vocabulary and explicit correction pairs with JSON transfer, RU/EN conversion, system offline dictionaries and built-in names, spelling modes, ignored words, application exclusions, launch at login, appearance selection, optional GitHub release checks.
 
 Not implemented in this repository: voice capture and transcription, AI providers and prompt workflows, translation, dictionary synchronization, Windows/Linux integrations, licensing/billing, a marketing website.
 
@@ -34,13 +34,10 @@ Existing name: KeySwitch. User-supplied product reference: https://www.keyray.ru
 
 ## Evidence on Hand
 
-Repository commit assessed: 82ffbc379d5fdf4669fb060abf665175386db50a.
+Current comparative audit: COMPARISON_AUDIT_2026-10-04.md (3.1.1 baseline).
+Current implementation and validation status: IMPLEMENTATION_3.2.0.md.
 
-README.md, README.en.md, PRIVACY.md, CHANGELOG.md, docs/KNOWN_ISSUES.md; Swift sources and language-engine regression tests. Existing artwork: docs/assets/app-icon.png, docs/assets/banner.svg, Resources/AppIconArtwork.png.
-
-Regression suite output in this review: LanguageEngineTests: OK. scripts/test.sh disables the system dictionary; this result does not verify live keyboard injection, native accessibility, UI rendering or real spelling-service performance.
-
-No current native screenshots or UI fixtures were found. No live input-monitor session was started during the review.
+README.md, README.en.md, PRIVACY.md, CHANGELOG.md, docs/KNOWN_ISSUES.md; Swift sources, deterministic stress corpus and installation fixtures. Native light-theme screenshots were inspected; live keyboard integration requires explicit access for the test build. Component tests and UI preview do not establish editor compatibility.
 
 ## Open Decisions
 

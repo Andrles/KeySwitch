@@ -9,7 +9,7 @@ enum SpellingMode: String, CaseIterable {
         switch self {
         case .off: return "Не проверять"
         case .suggestions: return "Подсказки"
-        case .autoCorrect: return "Исправлять"
+        case .autoCorrect: return "Автоисправление"
         }
     }
 }
@@ -118,6 +118,45 @@ final class Preferences {
     var ignoredWords: Set<String> {
         get { Set(defaults.stringArray(forKey: PreferenceKey.ignoredWords) ?? []) }
         set { defaults.set(Array(newValue).sorted(), forKey: PreferenceKey.ignoredWords) }
+    }
+
+    /// Exact application identities are shared by the monitor and menu.
+    func excludesApplication(_ bundleID: String) -> Bool {
+        excludedApps.contains(bundleID)
+    }
+
+    /// Apply only the user's changes; preserve additions from the suggestion panel.
+    func saveIgnoredWords(_ draft: Set<String>, baseline: Set<String>) {
+        guard draft != baseline else { return }
+        ignoredWords = ignoredWords.subtracting(baseline.subtracting(draft))
+            .union(draft.subtracting(baseline))
+    }
+
+    func shortcut(for command: ManualCommand) -> ShortcutPreset {
+        ShortcutPreset(rawValue: defaults.integer(forKey: "shortcut.\(command.rawValue)")) ?? .none
+    }
+
+    func setShortcut(_ shortcut: ShortcutPreset, for command: ManualCommand) -> Bool {
+        guard shortcut == .none || !ManualCommand.allCases.contains(where: {
+            $0 != command && self.shortcut(for: $0) == shortcut
+        }) else { return false }
+        defaults.set(shortcut.rawValue, forKey: "shortcut.\(command.rawValue)")
+        return true
+    }
+
+    var shiftLayoutOnly: Bool {
+        get { defaults.bool(forKey: "shiftLayoutOnly") }
+        set { defaults.set(newValue, forKey: "shiftLayoutOnly") }
+    }
+
+    var learnedWords: Set<String> {
+        get { Set(defaults.stringArray(forKey: "learnedWords") ?? []) }
+        set { defaults.set(Array(newValue).sorted(), forKey: "learnedWords") }
+    }
+
+    var wordReplacements: [String: String] {
+        get { defaults.dictionary(forKey: "wordReplacements") as? [String: String] ?? [:] }
+        set { defaults.set(newValue, forKey: "wordReplacements") }
     }
 
     var correctionCount: Int {

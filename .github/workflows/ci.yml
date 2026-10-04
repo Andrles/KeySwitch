@@ -17,6 +17,8 @@ jobs:
         run: chmod +x scripts/*.sh
       - name: Test language engine
         run: ./scripts/test.sh
+      - name: Test installer scripts and download selection
+        run: ./scripts/test-installer.sh
       - name: Build universal app
         run: ./scripts/build.sh
       - name: Package

@@ -1,7 +1,7 @@
 <div align="center">
   <img src="docs/assets/banner.svg" alt="KeySwitch — automatic keyboard layout switching for macOS" width="100%">
 
-  [![Version](https://img.shields.io/badge/version-3.0.1-6D5DFB)](CHANGELOG.md)
+  [![Version](https://img.shields.io/badge/version-3.2.0-6D5DFB)](CHANGELOG.md)
   [![Downloads](https://img.shields.io/github/downloads/Andrles/KeySwitch/total?label=downloads&logo=github&color=2563EB)](https://github.com/Andrles/KeySwitch/releases)
 
   **A native Russian ↔ English keyboard layout assistant for macOS.**
@@ -19,7 +19,7 @@
 - Converts the current word with a double press of Shift.
 - Adds the currently active app to exclusions directly from the menu bar.
 - Runs in the menu bar without keeping a permanent Dock window.
-- Shows the corrected language as an animated `A/Я` menu bar icon.
+- Shows distinct menu-bar symbols for ready, paused, and permission/error states.
 - Supports System, Light, and Dark appearances in a modern macOS design.
 - Checks GitHub Releases for new versions.
 - Never sends typed text to a remote service.
@@ -34,7 +34,7 @@
 /bin/zsh -c "$(curl -fsSL https://raw.githubusercontent.com/Andrles/KeySwitch/main/scripts/install.sh)"
 ```
 
-The command downloads `KeySwitch.pkg` from the latest published GitHub Release,
+The command selects a `.pkg` asset from the latest published GitHub Release,
 asks for an administrator password to install it into `/Applications`, and
 launches the app. You can [review the script](scripts/install.sh) before running it.
 
@@ -119,3 +119,13 @@ Closing the window keeps the app running. Quit through the KeySwitch menu.
 ### Safer corrections in 3.1.1
 
 Correct vocabulary, known names, technical terms and identifiers are protected before conversion. Layout conversion preserves letters and case. Automatic spelling uses curated common typo rules; ambiguous dictionary guesses remain suggestions accepted with double Shift. Quotes/brackets are preserved and Tab completes a word. Address/path/code separators are conservative. Mixed identifiers, language collisions and unsupported foreign characters may require manual conversion. The primary supported layout pair is English QWERTY / Russian ЙЦУКЕН.
+
+## Manual actions and personal dictionary (3.2.0)
+
+The “Ручные действия” menu converts the current word or selection, applies a suggestion, undoes the last automatic correction, and changes selection case. Automatic undo expires after further input, a field change, or 15 seconds. Configure individual Control + Option shortcuts in appearance/startup settings; new shortcuts are disabled by default. Conflicts between KeySwitch commands are rejected. Conflicts with other apps are not detected.
+
+Double Shift retains its legacy contextual actions. Enable “Двойной Shift — только раскладка” to reserve it for layout conversion; accept suggestions with the button or a separate command.
+
+The personal dictionary accepts correct words and explicit typo=replacement pairs. Learned words help detect layout mistakes. Explicit pairs apply at word boundaries while corrections are enabled, independently of spelling mode; ignored words take priority. JSON export/import merges words; incoming pairs replace matching keys.
+
+Selection layout conversion assumes one source layout throughout the phrase and preserves whitespace and outer punctuation. Mixed-language selections may produce unwanted results. Editing requires writable AXSelectedText; the clipboard is not used. Use the editor's own undo for manual selection edits.

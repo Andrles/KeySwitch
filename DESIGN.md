@@ -18,7 +18,13 @@ help and sound. Launch and icon visibility live in “Вид и запуск”.
 presentation is the default, including while settings are visible; optional Dock
 presence follows a persistent preference. Closing hides the window, not the app.
 
-Copy names user outcomes: “Опечатки”, “Не исправлять”, “Доступ macOS”. Avoid
+Copy names user outcomes: “Раскладка”, “Опечатки”, “Где не исправлять”, “Доступ macOS”. Avoid
 monitoring/engine jargon, decorative metrics and repeated feature summaries.
-The app identity uses two flat language keys A/Я with a native switching symbol;
-the menu bar uses a small template keyboard symbol instead of rotating letters.
+The app identity uses a single flat language key with A/Я and an integrated switching symbol;
+the menu bar uses template switching arrows when ready, a pause symbol when paused,
+and a warning symbol when access or monitoring is unavailable.
+
+Manual commands remain in a separate menu and configurable shortcut group. The
+personal dictionary belongs under spelling settings. Invalid dictionary drafts
+block navigation/export and remain visible for correction. Changing spelling
+mode updates its caption in place, preserving native keyboard focus.

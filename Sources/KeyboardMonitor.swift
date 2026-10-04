@@ -22,14 +22,17 @@ final class KeyboardMonitor {
         let language: Language?
         let expires: TimeInterval
     }
+    private var manualInputRevision = 0
     private var feedbackGeneration = 0
     private var undoGeneration = 0
     private var lastCorrection: PendingEdit?
     private var pendingSuggestion: PendingEdit?
     private let injectedMarker: Int64 = 0x5241534B
 
+    var onManualCommand: ((ManualCommand) -> Bool)?
     var onCorrection: ((Language) -> Void)?
     var onSpellingIssue: ((String, String) -> Void)?
+    var isInteractingWithMenu: (() -> Bool)?
     var preservesFeedbackAtPoint: ((CGPoint) -> Bool)?
     var onFeedbackInvalidated: (() -> Void)?
     var onPermissionChanged: ((Bool) -> Void)?
@@ -42,6 +45,17 @@ final class KeyboardMonitor {
     }
     var state: MonitorState {
         MonitorState.resolve(enabled: preferences.enabled, trusted: isTrusted, running: isRunning)
+    }
+
+    var availabilityDetail: String {
+        guard let app = NSWorkspace.shared.frontmostApplication,
+              app.processIdentifier != ProcessInfo.processInfo.processIdentifier else {
+            return "Исправление включено. Для проверки откройте текстовое поле в другом приложении."
+        }
+        if frontmostAppIsExcluded() { return "В «\(app.localizedName ?? "этом приложении")» исправление отключено: приложение в исключениях." }
+        if IsSecureEventInputEnabled() { return "Защищённый ввод: KeySwitch не меняет текст." }
+        if TextInputContext.current() == nil { return "Текущее поле или выделение недоступно для автоматической замены. Текст сохранён без изменений." }
+        return "Текущее поле доступно. Проверка слова — после пробела; замена выполняется только при проверенном контексте."
     }
 
     func invalidateContext() {
@@ -124,9 +138,32 @@ final class KeyboardMonitor {
         if event.getIntegerValueField(.eventSourceUserData) == injectedMarker {
             return Unmanaged.passUnretained(event)
         }
+        if type == .keyDown || [.leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel].contains(type) {
+            manualInputRevision += 1
+        }
         if [.leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel].contains(type) {
             if preservesFeedbackAtPoint?(event.location) != true { invalidateContext() }
             return Unmanaged.passUnretained(event)
+        }
+        // Menu navigation is consumed by AppKit, not by the external editor.
+        // Keep the target; each edit still validates the external field afresh.
+        if isInteractingWithMenu?() == true { return Unmanaged.passUnretained(event) }
+        if type == .keyDown,
+           event.flags.intersection([.maskCommand, .maskControl, .maskAlternate, .maskShift]) == [.maskControl, .maskAlternate],
+           let command = ManualCommand.allCases.first(where: { preferences.shortcut(for: $0).keyCode == event.getIntegerValueField(.keyboardEventKeycode) }) {
+            // Own a configured shortcut even if the edit is unsupported. Letting
+            // it reach the editor can insert control characters into selection.
+            let revision = manualInputRevision
+            let processID = NSWorkspace.shared.frontmostApplication?.processIdentifier
+            let sourceID = InputSourceController.currentIdentifier()
+            // Release the event tap before querying/editing the target's AX tree.
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.manualInputRevision == revision, self.isRunning,
+                      NSWorkspace.shared.frontmostApplication?.processIdentifier == processID,
+                      InputSourceController.currentIdentifier() == sourceID else { return }
+                if self.onManualCommand?(command) != true { NSSound.beep() }
+            }
+            return nil
         }
         guard preferences.enabled, !frontmostAppIsExcluded(),
               let context = TextInputContext.current() else {
@@ -203,7 +240,8 @@ final class KeyboardMonitor {
         let spellingParts = TextToken(currentWord)
         let spellingMode = preferences.spellingMode
         if spellingMode != .off,
-           !preferences.ignoredWords.contains(spellingParts.word.lowercased()) {
+           !preferences.ignoredWords.contains(spellingParts.word.lowercased()),
+           !preferences.learnedWords.contains(spellingParts.word.lowercased()) {
             let automatic = spellingMode == .autoCorrect
                 ? engine.spellingCorrection(for: currentWord, automatic: true) : nil
             if let automatic, replaceTypedText(automatic, boundaryEvent: event) {
@@ -243,8 +281,10 @@ final class KeyboardMonitor {
         let now = ProcessInfo.processInfo.systemUptime
         if lastShiftRelease > 0, now - lastShiftRelease < 0.36 {
             lastShiftRelease = 0
-            if pendingSuggestion != nil { _ = acceptSuggestion(); return }
-            if lastCorrection != nil { _ = restoreLastCorrection(); return }
+            if !preferences.shiftLayoutOnly {
+                if pendingSuggestion != nil { _ = acceptSuggestion(); return }
+                if lastCorrection != nil { _ = restoreLastCorrection(); return }
+            }
             if let correction = engine.forcedConversion(currentWord), replaceTypedText(correction) {
                 currentWord = ""
                 wordContext = nil
@@ -254,6 +294,16 @@ final class KeyboardMonitor {
         } else {
             lastShiftRelease = now
         }
+    }
+
+    @discardableResult
+    func convertCurrentWord() -> Bool {
+        guard let correction = engine.forcedConversion(currentWord), replaceTypedText(correction) else { return false }
+        currentWord = ""
+        wordContext = nil
+        expectedCaret = nil
+        suppressToken = true
+        return true
     }
 
     @discardableResult
@@ -379,11 +429,11 @@ final class KeyboardMonitor {
 
     private func frontmostAppIsExcluded() -> Bool {
         guard let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier else { return false }
-        return preferences.excludedApps.contains { bundleID == $0 || bundleID.hasPrefix($0) }
+        return preferences.excludesApplication(bundleID)
     }
 
     private func layoutCorrection(for token: String) -> Correction? {
-        engine.correction(for: token, ignored: preferences.ignoredWords)
+        engine.correction(for: token, ignored: preferences.ignoredWords, learned: preferences.learnedWords, replacements: preferences.wordReplacements)
     }
 
 }

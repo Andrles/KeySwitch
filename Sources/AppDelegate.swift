@@ -8,6 +8,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private lazy var spellingIndicator = SpellingIndicator()
     private var settingsController: SettingsWindowController?
     private var toggleItem: NSMenuItem?
+    private var statusMenuOpen = false
+    private var menuStatusItem: NSMenuItem?
     private var applicationExclusionItem: NSMenuItem?
     private var lastExternalApplication: NSRunningApplication?
     private var permissionTimer: Timer?
@@ -62,13 +64,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             name: NSWorkspace.didActivateApplicationNotification,
             object: nil
         )
+        monitor.onManualCommand = { [weak self] in self?.performManual($0) ?? false }
         monitor.onCorrection = { [weak self] language in
             self?.settingsController?.refresh()
             self?.animateStatusIcon(to: language)
         }
+        spellingIndicator.onApply = { [weak self] in _ = self?.monitor.acceptSuggestion() }
         spellingIndicator.onIgnore = { [weak self] word in self?.monitor.ignoreSuggestion(word: word) }
         spellingIndicator.onDismiss = { [weak self] in self?.monitor.dismissSuggestion() }
-        monitor.preservesFeedbackAtPoint = { [weak self] in self?.spellingIndicator.contains(eventPoint: $0) ?? false }
+        monitor.isInteractingWithMenu = { [weak self] in self?.statusMenuOpen ?? false }
+        monitor.preservesFeedbackAtPoint = { [weak self] point in
+            guard let self else { return false }
+            if self.statusMenuOpen || self.spellingIndicator.contains(eventPoint: point) { return true }
+            guard let button = self.statusItem.button, let window = button.window else { return false }
+            let screenPoint = NSPoint(x: point.x, y: (NSScreen.screens.first?.frame.maxY ?? 0) - point.y)
+            return window.convertToScreen(button.convert(button.bounds, to: nil)).contains(screenPoint)
+        }
         monitor.onFeedbackInvalidated = { [weak self] in self?.spellingIndicator.hide() }
         monitor.onSpellingIssue = { [weak self] word, suggestion in
             self?.spellingIndicator.show(word: word, suggestion: suggestion)
@@ -111,6 +122,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.delegate = self
         let header = NSMenuItem(title: "KeySwitch", action: nil, keyEquivalent: "")
         header.isEnabled = false
+        menuStatusItem = header
         header.image = menuSymbol("keyboard")
         menu.addItem(header)
         menu.addItem(.separator())
@@ -124,9 +136,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         exclusion.target = self
         applicationExclusionItem = exclusion
         menu.addItem(exclusion)
+        let manual = NSMenuItem(title: "Ручные действия", action: nil, keyEquivalent: "")
+        let actions = NSMenu()
+        for command in ManualCommand.allCases {
+            let item = NSMenuItem(title: command.title, action: #selector(manualAction(_:)), keyEquivalent: "")
+            item.target = self
+            item.tag = command.rawValue
+            actions.addItem(item)
+        }
+        manual.submenu = actions
+        menu.addItem(manual)
         menu.addItem(.separator())
 
-        let settings = NSMenuItem(title: "Открыть KeySwitch…",
+        let settings = NSMenuItem(title: "Настройки…",
                                   action: #selector(openSettings),
                                   keyEquivalent: ",")
         settings.target = self
@@ -138,7 +160,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         hide.target = self
         hide.image = menuSymbol("menubar.rectangle")
         menu.addItem(hide)
-        let permission = NSMenuItem(title: "Проверить доступ macOS",
+        let permission = NSMenuItem(title: "Разрешения macOS…",
                                     action: #selector(checkPermission),
                                     keyEquivalent: "")
         permission.target = self
@@ -167,8 +189,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func menuWillOpen(_ menu: NSMenu) {
+        statusMenuOpen = true
         updateApplicationExclusionItem()
     }
+
+    func menuDidClose(_ menu: NSMenu) { statusMenuOpen = false }
 
     @objc private func toggleEnabled() {
         preferences.enabled.toggle()
@@ -185,6 +210,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         applyPresentation()
         settingsController?.refresh()
         let state = monitor.state
+        menuStatusItem?.title = state.title
         statusItem.button?.toolTip = "KeySwitch: \(state.title)"
         statusItem.button?.setAccessibilityLabel("KeySwitch: \(state.title)")
         toggleItem?.title = preferences.enabled ? "Поставить на паузу" : "Включить исправление"
@@ -218,7 +244,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
         let name = application.localizedName ?? "Приложение"
-        let isExcluded = preferences.excludedApps.contains(bundleID)
+        let isExcluded = preferences.excludesApplication(bundleID)
         item.title = isExcluded
             ? "Исправлять в «\(name)»"
             : "Не исправлять в «\(name)»"
@@ -229,7 +255,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func toggleActiveApplicationExclusion(_ sender: NSMenuItem) {
         guard let bundleID = sender.representedObject as? String else { return }
-        if preferences.excludedApps.contains(bundleID) {
+        if preferences.excludesApplication(bundleID) {
             preferences.excludedApps.removeAll { $0 == bundleID }
         } else {
             preferences.excludedApps.append(bundleID)
@@ -273,7 +299,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func hideSettings() {
-        settingsController?.commitPendingEdits()
+        guard settingsController?.commitPendingEdits() != false else { return }
         settingsController?.window?.orderOut(nil)
         applyPresentation()
     }
@@ -282,17 +308,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         hideSettings()
     }
 
-    @objc private func checkPermission() {
-        if monitor.isTrusted {
-            monitor.resetRetry()
-            monitor.start()
-            let alert = NSAlert()
-            alert.messageText = monitor.state.title
-            alert.informativeText = monitor.state.detail
-            alert.runModal()
-        } else {
-            showOnboarding()
+    @objc private func manualAction(_ sender: NSMenuItem) {
+        guard let command = ManualCommand(rawValue: sender.tag) else { return }
+        if !performManual(command) { NSSound.beep() }
+    }
+
+    private func performManual(_ command: ManualCommand) -> Bool {
+        switch command {
+        case .layout:
+            return SelectionEditor.perform(command) || monitor.convertCurrentWord()
+        case .uppercase, .lowercase:
+            return SelectionEditor.perform(command)
+        case .accept: return monitor.acceptSuggestion()
+        case .undo: return monitor.restoreLastCorrection()
         }
+    }
+
+    @objc private func checkPermission() {
+        openSettings()
+        settingsController?.showPermissions()
     }
 
     @objc private func checkForUpdates() {
@@ -325,7 +359,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func makeStatusImage(enabled: Bool, glyph: String) -> NSImage {
-        let name = enabled ? "keyboard" : "keyboard.badge.ellipsis"
+        let name: String
+        switch monitor.state {
+        case .ready: name = "arrow.left.arrow.right"
+        case .paused: name = "pause.circle"
+        case .needsPermission, .failed: name = "exclamationmark.triangle"
+        }
         let image = NSImage(systemSymbolName: name, accessibilityDescription: "KeySwitch")?
             .withSymbolConfiguration(.init(pointSize: 17, weight: .regular)) ?? NSImage()
         image.isTemplate = true

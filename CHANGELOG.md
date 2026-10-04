@@ -191,3 +191,16 @@
 - Share punctuation parsing between spelling and layout; fix spelling inside quotes/brackets and recognize Tab as a word boundary.
 - Skip automatic edits at address/path/code separators, protect drive prefixes and long Unicode event buffers.
 - Add offline vocabulary, deterministic stress audit and strict regressions for the reproduced defects.
+
+## 3.2.0 — 2026-10-04
+
+- Resolve the installer asset from GitHub Releases instead of assuming a fixed package name. Add fixtures for versioned/stable assets and invalid downloads.
+- Preserve words added from a suggestion while settings are open; share exact application-exclusion matching with the menu.
+- Clarify section and menu labels, distinguish menu-bar states, use system accent colors, and update spelling descriptions without rebuilding the section.
+- Add a suggestion Apply button, configurable individual manual shortcuts, and an optional layout-only double Shift mode.
+- Add guarded selection layout/case editing through writable Accessibility selection, without clipboard replacement.
+- Add learned vocabulary, explicit correction pairs, and bounded JSON dictionary import/export. Preserve invalid correction drafts and normalize imported words.
+- Keep manual correction targets while navigating the status menu; validate the external editor again before editing.
+- Consume configured manual shortcuts even when editing fails, and perform Accessibility edits outside the event-tap callback. Cancel delayed commands when input or the target changes. Physical TextEdit tests confirmed layout, uppercase and lowercase conversion without extra control characters.
+
+Verification and release limitations: see IMPLEMENTATION_3.2.0.md.

@@ -16,6 +16,8 @@ jobs:
         run: chmod +x scripts/*.sh
       - name: Test
         run: ./scripts/test.sh
+      - name: Test installer scripts and download selection
+        run: ./scripts/test-installer.sh
       - name: Build
         run: ./scripts/build.sh
       - name: Package

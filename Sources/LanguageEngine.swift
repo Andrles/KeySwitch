@@ -177,10 +177,20 @@ struct LanguageEngine {
         return Correction(original: word, replacement: replacement, language: target)
     }
 
-    func correction(for word: String, ignored: Set<String> = []) -> Correction? {
+    func correction(for word: String, ignored: Set<String> = [], learned: Set<String> = [], replacements: [String: String] = [:]) -> Correction? {
         guard word.count <= 64 else { return nil }
         let protectedCore = TextToken(word).word
-        if isKnownWord(protectedCore) || ignored.contains(protectedCore.lowercased()) { return nil }
+        let tokenParts = TextToken(word)
+        let key = protectedCore.lowercased()
+        if ignored.contains(key) { return nil }
+        if let replacement = replacements[key], replacement != protectedCore,
+           let language = scriptLanguage(replacement) {
+            return Correction(original: word, replacement: tokenParts.wrapping(replacement), language: language)
+        }
+        if learned.contains(key) || isKnownWord(protectedCore) { return nil }
+        if let converted = forcedConversion(word), learned.contains(TextToken(converted.replacement).word.lowercased()) {
+            return converted
+        }
         if TextToken.isIdentifier(protectedCore) || (word.count <= 2 && word.hasSuffix(":")), canonicalModel(convert(word, to: .english)) == nil { return nil }
         if let correction = correctionForBareWord(word, ignored: ignored) {
             return correction

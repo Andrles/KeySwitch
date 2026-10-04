@@ -16,6 +16,7 @@ xcrun swiftc \
   "$project_dir/Sources/KeyboardTokenClassifier.swift" \
   "$project_dir/Sources/KeyboardReplacementPlan.swift" \
   "$project_dir/Sources/Preferences.swift" \
+  "$project_dir/Sources/ManualEditing.swift" \
   "$project_dir/Sources/AppVersion.swift" \
   "$project_dir/Sources/UpdateChecker.swift" \
   "$project_dir/Tests/main.swift" \

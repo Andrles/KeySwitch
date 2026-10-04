@@ -74,3 +74,5 @@ PYTEST
 [[ ! -e "$apps/KeySwitch 2.app" && ! -e "$apps/Other App.app" ]]
 [[ -d "$apps/KeySwitch unrelated.app" && -L "$apps/Shortcut.app" ]]
 echo 'Installer cleanup tests: OK (verified identifiers, unrelated app and symlink preserved)'
+
+python3 "$project_dir/Tests/InstallDownloadFixtures.py"

@@ -239,3 +239,35 @@ guard !KeyboardTokenClassifier.isNavigationKey(48), KeyboardTokenClassifier.isNa
     fputs("FAIL Word completion/navigation policy\n", stderr); exit(1)
 }
 print("Keyboard boundary policy tests: OK")
+
+// Concurrent dictionary edits must preserve panel additions and explicit removals.
+let auditDefaults = UserDefaults(suiteName: "local.keyswitch.tests.dictionary")!
+auditDefaults.removePersistentDomain(forName: "local.keyswitch.tests.dictionary")
+let auditPreferences = Preferences(defaults: auditDefaults)
+auditPreferences.ignoredWords = ["api", "newhud"]
+auditPreferences.saveIgnoredWords(["api"], baseline: ["api"])
+assert(auditPreferences.ignoredWords == ["api", "newhud"])
+auditPreferences.saveIgnoredWords(["manual"], baseline: ["api"])
+assert(auditPreferences.ignoredWords == ["manual", "newhud"])
+auditPreferences.excludedApps = ["com.editor.app"]
+assert(auditPreferences.excludesApplication("com.editor.app"))
+assert(!auditPreferences.excludesApplication("com.editor.application"))
+assert(!auditPreferences.excludesApplication("com.editor.app.helper"))
+assert(auditPreferences.setShortcut(.l, for: .layout))
+assert(!auditPreferences.setShortcut(.l, for: .accept))
+assert(auditPreferences.shortcut(for: .accept) == .none)
+assert(auditPreferences.setShortcut(.enter, for: .accept))
+assert(UserDictionaryFormat.replacements("wrong=Right, typo=слово") == ["wrong": "Right", "typo": "слово"])
+assert(UserDictionaryFormat.replacements("bad=") == nil)
+assert(UserDictionaryFormat.replacements("a=one,A=two") == nil)
+expect(engine.correction(for: "кейсвич", replacements: ["кейсвич":"KeySwitch"])?.replacement, "KeySwitch", "Explicit user spelling")
+expect(engine.correction(for: "(кейсвич)", replacements: ["кейсвич":"KeySwitch"])?.replacement, "(KeySwitch)", "User spelling preserves brackets")
+expectNil(engine.correction(for: "кейсвич", ignored: ["кейсвич"], replacements: ["кейсвич":"KeySwitch"]), "Ignore takes priority over custom replacement")
+expectNil(engine.correction(for: "flarnyx", learned: ["flarnyx"]), "Learned unfamiliar word remains")
+expect(engine.correction(for: "адфктнч", learned: ["flarnyx"])?.replacement, "flarnyx", "Layout uses learned vocabulary")
+expect(SelectedTextTransform.apply(.layout, to: "Ghbdtn, vbh!"), "Привет, мир!", "Selected sentence layout with punctuation")
+expect(SelectedTextTransform.apply(.uppercase, to: "Привет, Straße!"), "ПРИВЕТ, STRASSE!", "Selected unicode case expands safely")
+expect(SelectedTextTransform.apply(.lowercase, to: "API, ЁЖ!"), "api, ёж!", "Selected lowercase")
+assert(SelectedTextTransform.apply(.layout, to: String(repeating: "a", count: 4097)) == nil)
+auditDefaults.removePersistentDomain(forName: "local.keyswitch.tests.dictionary")
+print("Dictionary/manual command regressions: OK")

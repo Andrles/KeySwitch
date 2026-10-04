@@ -4,7 +4,9 @@ final class SpellingIndicator {
     private let panel: NSPanel
     private let label = NSTextField(wrappingLabelWithString: "")
     private let stack = NSStackView()
+    private let hint = NSTextField(wrappingLabelWithString: "")
     private var word = ""
+    var onApply: (() -> Void)?
     var onIgnore: ((String) -> Void)?
     var onDismiss: (() -> Void)?
 
@@ -38,8 +40,7 @@ final class SpellingIndicator {
         label.setContentCompressionResistancePriority(.required, for: .vertical)
         stack.addArrangedSubview(label)
         label.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
-        let hint = NSTextField(wrappingLabelWithString:
-            "Двойной Shift — применить до следующего ввода. Esc — закрыть. При смене поля замена отменяется.")
+
         hint.font = .systemFont(ofSize: 12)
         hint.textColor = .secondaryLabelColor
         hint.setContentCompressionResistancePriority(.required, for: .vertical)
@@ -48,6 +49,7 @@ final class SpellingIndicator {
         let actions = NSStackView()
         actions.orientation = .horizontal
         actions.spacing = 10
+        actions.addArrangedSubview(NSButton(title: "Применить", target: self, action: #selector(apply)))
         actions.addArrangedSubview(NSButton(title: "Не исправлять это слово", target: self,
                                             action: #selector(ignoreWord)))
         actions.addArrangedSubview(NSButton(title: "Закрыть", target: self, action: #selector(dismiss)))
@@ -56,6 +58,8 @@ final class SpellingIndicator {
 
     func show(word: String, suggestion: String) {
         self.word = word
+        let instruction = Preferences.shared.shiftLayoutOnly ? "Кнопка «Применить» — до следующего ввода." : "Двойной Shift — применить до следующего ввода."
+        hint.stringValue = instruction + " Esc — закрыть. При смене поля замена отменяется."
         label.stringValue = "Возможная опечатка: \(word) → \(suggestion)"
         panel.contentView?.layoutSubtreeIfNeeded()
         panel.setContentSize(NSSize(width: 420, height: max(144, stack.fittingSize.height + 28)))
@@ -67,7 +71,7 @@ final class SpellingIndicator {
         panel.orderFrontRegardless()
         NSAccessibility.post(element: panel, notification: .announcementRequested,
                              userInfo: [.announcement: label.stringValue + ". " +
-                                        "Двойной Shift — применить. Esc — закрыть.",
+                                        hint.stringValue,
                                         .priority: NSAccessibilityPriorityLevel.medium.rawValue])
     }
 
@@ -83,6 +87,8 @@ final class SpellingIndicator {
         word = ""
         label.stringValue = ""
     }
+
+    @objc private func apply() { onApply?(); hide() }
 
     @objc private func ignoreWord() {
         onIgnore?(word)

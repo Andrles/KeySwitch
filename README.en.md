@@ -6,7 +6,7 @@
 
   **A native Russian ↔ English keyboard layout assistant for macOS.**
 
-  [Русский](README.md) · [Download](https://github.com/Andrles/KeySwitch/releases/latest) · [Features](#features) · [Installation](#installation) · [Troubleshooting](#troubleshooting)
+  [Русский](README.md) · [Terminal install](#terminal) · [Download](https://github.com/Andrles/KeySwitch/releases/latest) · [Features](#features) · [Installation](#installation) · [Troubleshooting](#troubleshooting)
 </div>
 
 ## Features
@@ -26,7 +26,7 @@
 
 ## Installation
 
-> [Download the latest KeySwitch release](https://github.com/Andrles/KeySwitch/releases/latest)
+> [Install via Terminal](#terminal) · [Download the installer](https://github.com/Andrles/KeySwitch/releases/latest)
 
 ### Terminal
 
@@ -36,7 +36,8 @@
 
 The command selects a `.pkg` asset from the latest published GitHub Release,
 asks for an administrator password to install it into `/Applications`, and
-launches the app. You can [review the script](scripts/install.sh) before running it.
+launches the app. The previous version is updated and preferences are preserved.
+[Review the installation script](https://github.com/Andrles/KeySwitch/blob/main/scripts/install.sh) before running it.
 
 ### Manual installation
 

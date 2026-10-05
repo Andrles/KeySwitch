@@ -47,11 +47,21 @@ enum PreferenceKey {
 
 final class Preferences {
     static let shared: Preferences = {
-        if CommandLine.arguments.contains("--ui-preview") || CommandLine.arguments.contains("--launch-check") {
+        if CommandLine.arguments.contains("--ui-preview") || CommandLine.arguments.contains("--launch-check") || CommandLine.arguments.contains("--runtime-check") {
             let name = "local.keyswitch.preview.\(ProcessInfo.processInfo.processIdentifier)"
             let defaults = UserDefaults(suiteName: name)!
             defaults.removePersistentDomain(forName: name)
-            return Preferences(defaults: defaults)
+            let preferences = Preferences(defaults: defaults)
+            if CommandLine.arguments.contains("--runtime-check") {
+                preferences.automaticallyChecksForUpdates = false
+                preferences.playSound = false
+                preferences.excludedApps = []
+                preferences.snippetsEnabled = true
+                preferences.snippets = ["spas": "Спасибо, хорошего дня!", "sig": "Best regards, Алексей 🙂"]
+                _ = preferences.setShortcut(.z, for: .undo)
+                _ = preferences.setShortcut(.l, for: .layout)
+            }
+            return preferences
         }
         return Preferences()
     }()
@@ -59,10 +69,12 @@ final class Preferences {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        let hasExistingSettings = [PreferenceKey.enabled, PreferenceKey.appTheme, PreferenceKey.menuBarOnly, PreferenceKey.spellingMode].contains { defaults.object(forKey: $0) != nil }
         let storedSpellingMode = defaults.string(forKey: PreferenceKey.spellingMode)
         let legacySpellChecking = defaults.object(forKey: PreferenceKey.spellChecking) as? Bool
         let legacyAutoCorrect = defaults.object(forKey: PreferenceKey.spellAutoCorrect) as? Bool
         defaults.register(defaults: [
+            "shiftLayoutOnly": !hasExistingSettings,
             PreferenceKey.enabled: true,
             PreferenceKey.menuBarOnly: true,
             PreferenceKey.playSound: true,
@@ -115,6 +127,44 @@ final class Preferences {
         set { defaults.set(newValue, forKey: PreferenceKey.excludedApps) }
     }
 
+    var applicationProfiles: [String: ApplicationProfile] {
+        get { defaults.data(forKey: "applicationProfiles").flatMap { try? JSONDecoder().decode([String: ApplicationProfile].self, from: $0) } ?? [:] }
+        set { if let data = try? JSONEncoder().encode(newValue) { defaults.set(data, forKey: "applicationProfiles") } }
+    }
+
+    var applicationRuleIDs: [String] { Array(Set(excludedApps + applicationProfiles.keys)).sorted() }
+
+    func profile(for bundleID: String) -> ApplicationProfile {
+        excludesApplication(bundleID) ? .none : applicationProfiles[bundleID] ?? .all
+    }
+
+    func setProfile(_ profile: ApplicationProfile, for bundleID: String) {
+        excludedApps.removeAll { $0 == bundleID }
+        applicationProfiles[bundleID] = profile
+    }
+
+    func removeApplicationRule(_ bundleID: String) {
+        excludedApps.removeAll { $0 == bundleID }
+        applicationProfiles.removeValue(forKey: bundleID)
+    }
+
+    var snippetsEnabled: Bool {
+        get { defaults.bool(forKey: "snippetsEnabled") }
+        set { defaults.set(newValue, forKey: "snippetsEnabled") }
+    }
+    var snippets: [String: String] {
+        get { defaults.dictionary(forKey: "snippets") as? [String: String] ?? [:] }
+        set { defaults.set(newValue, forKey: "snippets") }
+    }
+
+    func snippet(for token: String, boundary: String, bundleID: String) -> String? {
+        let key = token.lowercased()
+        guard enabled, snippetsEnabled, boundary == " ", profile(for: bundleID).snippets,
+              !ignoredWords.contains(key), let phrase = snippets[key],
+              UserDictionaryFormat.validWord(token), SnippetFormat.validPhrase(phrase), phrase != token else { return nil }
+        return phrase
+    }
+
     var ignoredWords: Set<String> {
         get { Set(defaults.stringArray(forKey: PreferenceKey.ignoredWords) ?? []) }
         set { defaults.set(Array(newValue).sorted(), forKey: PreferenceKey.ignoredWords) }
@@ -140,7 +190,26 @@ final class Preferences {
         guard shortcut == .none || !ManualCommand.allCases.contains(where: {
             $0 != command && self.shortcut(for: $0) == shortcut
         }) else { return false }
+        defaults.removeObject(forKey: "binding.\(command.rawValue)")
         defaults.set(shortcut.rawValue, forKey: "shortcut.\(command.rawValue)")
+        return true
+    }
+
+    func shortcutBinding(for command: ManualCommand) -> ShortcutBinding? {
+        if let data = defaults.data(forKey: "binding.\(command.rawValue)"), let value = try? JSONDecoder().decode(ShortcutBinding.self, from: data) { return value }
+        let preset = shortcut(for: command)
+        guard let code = preset.keyCode else { return nil }
+        return ShortcutBinding(keyCode: code, modifiers: ShortcutBinding.control | ShortcutBinding.option, title: preset.title)
+    }
+
+    func setShortcutBinding(_ binding: ShortcutBinding?, for command: ManualCommand) -> Bool {
+        if let binding {
+            guard binding.allowed, !ManualCommand.allCases.contains(where: {
+                $0 != command && shortcutBinding(for: $0).map { $0.keyCode == binding.keyCode && $0.modifiers == binding.modifiers } == true
+            }), let data = try? JSONEncoder().encode(binding) else { return false }
+            defaults.set(data, forKey: "binding.\(command.rawValue)")
+        } else { defaults.removeObject(forKey: "binding.\(command.rawValue)") }
+        defaults.set(ShortcutPreset.none.rawValue, forKey: "shortcut.\(command.rawValue)")
         return true
     }
 

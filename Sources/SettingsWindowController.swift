@@ -28,6 +28,8 @@ private enum SettingsSection: Int, CaseIterable {
     case permissions
     case appearance
     case about
+    case dictionary
+    case actions
 
     var title: String {
         switch self {
@@ -36,6 +38,8 @@ private enum SettingsSection: Int, CaseIterable {
         case .exclusions: return "Где не исправлять"
         case .permissions: return "Доступ macOS"
         case .appearance: return "Вид и запуск"
+        case .dictionary: return "Мой словарь"
+        case .actions: return "Ручные действия"
         case .about: return "О приложении"
         }
     }
@@ -47,6 +51,8 @@ private enum SettingsSection: Int, CaseIterable {
         case .exclusions: return "nosign"
         case .permissions: return "hand.raised"
         case .appearance: return "circle.lefthalf.filled"
+        case .dictionary: return "text.book.closed"
+        case .actions: return "keyboard"
         case .about: return "info.circle"
         }
     }
@@ -137,17 +143,14 @@ final class SettingsWindowController: NSWindowController,
     private let sidebar = GlassSidebarView()
     private let contentHost = NSView()
     private let appTable = NSTableView()
+    private var profileControls: [NSButton] = []
+    private var selectedProfileID: String?
     private var selectedSection: SettingsSection = .general
     private var sidebarButtons: [SettingsSection: SidebarButton] = [:]
 
     private weak var accessStatusLabel: NSTextField?
     private weak var spellingModeControl: NSSegmentedControl?
-    private weak var ignoredWordsField: NSTextField?
-    private var ignoredWordsBaseline: Set<String> = []
-    private weak var learnedWordsField: NSTextField?
-    private weak var replacementsField: NSTextField?
-    private var learnedWordsBaseline: Set<String> = []
-    private var replacementsBaseline: [String: String] = [:]
+    private var dictionaryEditor: DictionaryEditor?
     private weak var spellingDescriptionLabel: NSTextField?
     private weak var themeControl: NSSegmentedControl?
     private weak var automaticUpdatesSwitch: NSButton?
@@ -253,7 +256,7 @@ final class SettingsWindowController: NSWindowController,
         root.addArrangedSubview(header)
         root.setCustomSpacing(18, after: header)
 
-        for section in SettingsSection.allCases where section != .about {
+        for section in [SettingsSection.general, .spelling, .dictionary, .actions, .exclusions, .permissions, .appearance] {
             root.addArrangedSubview(sidebarButton(for: section))
         }
 
@@ -294,8 +297,7 @@ final class SettingsWindowController: NSWindowController,
     }
 
     private func showSection(_ section: SettingsSection) {
-        saveIgnoredWords()
-        guard persistUserDictionary() else {
+        guard dictionaryEditor?.commitPendingEdits() != false else {
             for (value, button) in sidebarButtons { button.state = value == selectedSection ? .on : .off }
             return
         }
@@ -318,6 +320,15 @@ final class SettingsWindowController: NSWindowController,
         case .exclusions: sectionView = buildExclusionsSection()
         case .permissions: sectionView = buildPermissionsSection()
         case .appearance: sectionView = buildAppearanceSection()
+        case .dictionary:
+            let (view, stack) = sectionCanvas(title: "Мой словарь", subtitle: "Слова и правила, которые вы добавили сами.")
+            let editor = DictionaryEditor(preferences: preferences)
+            editor.onRulesChanged = { [weak self] in self?.monitor.invalidateContext() }
+            dictionaryEditor = editor
+            stack.addArrangedSubview(editor)
+            stack.addArrangedSubview(footerView())
+            sectionView = view
+        case .actions: sectionView = buildActionsSection()
         case .about: sectionView = buildAboutSection()
         }
         fillSectionWidth(in: sectionView)
@@ -342,6 +353,7 @@ final class SettingsWindowController: NSWindowController,
     }
 
     private func resetWeakControls() {
+        dictionaryEditor = nil
         statusIcon = nil
         statusTitleLabel = nil
         statusDetailLabel = nil
@@ -352,9 +364,6 @@ final class SettingsWindowController: NSWindowController,
         testResultLabel = nil
         accessStatusLabel = nil
         spellingModeControl = nil
-        ignoredWordsField = nil
-        learnedWordsField = nil
-        replacementsField = nil
         spellingDescriptionLabel = nil
         themeControl = nil
         automaticUpdatesSwitch = nil
@@ -457,47 +466,8 @@ final class SettingsWindowController: NSWindowController,
         spellingDescriptionLabel = description
         modeCard.stack.addArrangedSubview(description)
 
-        let ignored = card(height: 125)
-        ignored.stack.addArrangedSubview(sectionCardHeader(
-            symbolName: "textformat.abc",
-            title: "Не исправлять эти слова",
-            subtitle: "Напишите слова через запятую и нажмите Enter.",
-            tint: .systemOrange
-        ))
-        let field = NSTextField()
-        ignoredWordsBaseline = preferences.ignoredWords
-        field.stringValue = ignoredWordsBaseline.sorted().joined(separator: ", ")
-        field.placeholderAttributedString = NSAttributedString(string: "Например: KeySwitch, API", attributes: [.foregroundColor: UIStyle.secondaryText])
-        field.setAccessibilityLabel("Слова, которые не нужно исправлять; через запятую")
-        field.delegate = self
-        field.target = self
-        field.action = #selector(saveIgnoredWords)
-        ignoredWordsField = field
-        ignored.stack.addArrangedSubview(field)
-        stack.addArrangedSubview(ignored.view)
-        let dictionary = card(height: 160)
-        dictionary.stack.addArrangedSubview(label("Мой словарь", size: 15, weight: .semibold))
-        dictionary.stack.addArrangedSubview(label("Правильные слова через запятую: не считаются опечатками и помогают распознать раскладку.", size: 13, color: UIStyle.secondaryText, wrapping: true))
-        learnedWordsBaseline = preferences.learnedWords
-        let learned = NSTextField(string: learnedWordsBaseline.sorted().joined(separator: ", "))
-        learned.placeholderString = "Например: KeySwitch, аэрогель"
-        learned.setAccessibilityLabel("Правильные слова моего словаря")
-        learned.target = self; learned.action = #selector(saveUserDictionary); learned.delegate = self
-        learnedWordsField = learned
-        dictionary.stack.addArrangedSubview(learned)
-        dictionary.stack.addArrangedSubview(label("Мои исправления: опечатка=правильное слово, через запятую. Применяются автоматически на границе слова.", size: 13, color: UIStyle.secondaryText, wrapping: true))
-        replacementsBaseline = preferences.wordReplacements
-        let pairs = NSTextField(string: replacementsBaseline.keys.sorted().map { "\($0)=\(replacementsBaseline[$0]!)" }.joined(separator: ", "))
-        pairs.placeholderString = "Например: кейсвич=KeySwitch"
-        pairs.setAccessibilityLabel("Пары пользовательских исправлений")
-        pairs.target = self; pairs.action = #selector(saveUserDictionary); pairs.delegate = self
-        replacementsField = pairs
-        dictionary.stack.addArrangedSubview(pairs)
-        let files = NSStackView()
-        files.addArrangedSubview(NSButton(title: "Экспорт словаря…", target: self, action: #selector(exportDictionary)))
-        files.addArrangedSubview(NSButton(title: "Импорт словаря…", target: self, action: #selector(importDictionary)))
-        dictionary.stack.addArrangedSubview(files)
-        stack.addArrangedSubview(dictionary.view)
+        let dictionaryLink = NSButton(title: "Открыть мой словарь", target: self, action: #selector(openDictionarySection))
+        stack.addArrangedSubview(dictionaryLink)
         stack.addArrangedSubview(footerView())
         return view
     }
@@ -516,7 +486,7 @@ final class SettingsWindowController: NSWindowController,
     private func buildExclusionsSection() -> NSView {
         let (view, stack) = sectionCanvas(
             title: "Где не исправлять",
-            subtitle: "В этих приложениях KeySwitch не изменяет ввод"
+            subtitle: "Отключите исправления целиком или выберите автоматические функции"
         )
         let tableCard = card(height: 360)
         let scroll = NSScrollView()
@@ -527,7 +497,7 @@ final class SettingsWindowController: NSWindowController,
         scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 180).isActive = true
         let empty = label("Исключений нет. Добавьте приложение, в котором KeySwitch не должен менять текст.",
                           size: 12, color: UIStyle.secondaryText, wrapping: true)
-        empty.isHidden = !preferences.excludedApps.isEmpty
+        empty.isHidden = !preferences.applicationRuleIDs.isEmpty
         emptyExclusionsLabel = empty
         tableCard.stack.addArrangedSubview(empty)
         tableCard.stack.addArrangedSubview(scroll)
@@ -552,6 +522,17 @@ final class SettingsWindowController: NSWindowController,
         tableCard.stack.addArrangedSubview(controls)
         stack.addArrangedSubview(tableCard.view)
 
+        let profile = card(height: 176)
+        profile.stack.addArrangedSubview(label("Автоматические функции выбранного приложения", size: 13))
+        profileControls = []
+        for (index, title) in ["Исправлять раскладку", "Проверять орфографию", "Разворачивать сокращения"].enumerated() {
+            let button = NSButton(checkboxWithTitle: title, target: self, action: #selector(changeProfile))
+            button.tag = index; button.isEnabled = false
+            profileControls.append(button); profile.stack.addArrangedSubview(button)
+        }
+        profile.stack.addArrangedSubview(label("Выберите приложение выше. Частичные правила оставляют ручные команды доступными. Полное исключение блокирует и их.", size: 12, color: UIStyle.secondaryText, wrapping: true))
+        stack.addArrangedSubview(profile.view)
+        updateProfileControls()
         let info = card(height: 86)
         info.stack.addArrangedSubview(sectionCardHeader(
             symbolName: "lightbulb",
@@ -659,20 +640,33 @@ final class SettingsWindowController: NSWindowController,
         launch.stack.addArrangedSubview(settingRow(title: "Только в строке меню", subtitle: "Без значка в Dock. Окно открывается из меню KeySwitch.", state: preferences.menuBarOnly, action: #selector(toggleMenuBarOnly(_:))))
         launch.stack.addArrangedSubview(settingRow(title: "Открывать при входе в Mac", subtitle: "KeySwitch запустится вместе с системой", state: SMAppService.mainApp.status == .enabled, action: #selector(toggleLogin(_:))))
         stack.addArrangedSubview(launch.view)
+
+        stack.addArrangedSubview(footerView())
+        return view
+    }
+
+    @objc private func openDictionarySection() { showSection(.dictionary) }
+
+    private func buildActionsSection() -> NSView {
+        let (view, stack) = sectionCanvas(title: "Ручные действия", subtitle: "Измените слово или выделенный текст. Недоступные поля не изменяются.")
         let shortcuts = card(height: 200)
         shortcuts.stack.addArrangedSubview(label("Горячие клавиши", size: 15, weight: .semibold))
-        shortcuts.stack.addArrangedSubview(label("Сочетания Control + Option действуют в доступных текстовых полях. Не назначайте занятые другими приложениями сочетания.", size: 13, color: UIStyle.secondaryText, wrapping: true))
+        shortcuts.stack.addArrangedSubview(label("Нажмите «Назначить» и введите сочетание с Command или Control. Delete убирает назначение, Escape отменяет ввод. Не используйте сочетания других приложений; известные системные команды защищены.", size: 13, color: UIStyle.secondaryText, wrapping: true))
         shortcuts.stack.addArrangedSubview(settingRow(title: "Двойной Shift — только раскладка", subtitle: "Подсказку можно применить кнопкой. Отмена — через ручные действия или отдельное сочетание.", state: preferences.shiftLayoutOnly, action: #selector(toggleShiftMode(_:))))
         for command in ManualCommand.allCases {
             let row = NSStackView()
             row.addArrangedSubview(label(command.title, size: 13, wrapping: true))
             row.addArrangedSubview(spacer())
-            let popup = NSPopUpButton()
-            popup.addItems(withTitles: ShortcutPreset.allCases.map(\.title))
-            popup.selectItem(at: preferences.shortcut(for: command).rawValue)
-            popup.tag = command.rawValue; popup.target = self; popup.action = #selector(changeShortcut(_:))
-            popup.setAccessibilityLabel(command.title)
-            row.addArrangedSubview(popup)
+            let recorder = ShortcutRecorder(command: command, binding: preferences.shortcutBinding(for: command))
+            recorder.onChange = { [weak self] binding in
+                guard let self else { return false }
+                guard self.preferences.setShortcutBinding(binding, for: command) else {
+                    self.showError("Сочетание не сохранено: используйте Command или Control, избегайте системных команд и сочетаний, уже назначенных в KeySwitch.")
+                    return false
+                }
+                return true
+            }
+            row.addArrangedSubview(recorder)
             shortcuts.stack.addArrangedSubview(row)
         }
         stack.addArrangedSubview(shortcuts.view)
@@ -968,24 +962,25 @@ final class SettingsWindowController: NSWindowController,
         appTable.rowHeight = 52
         appTable.backgroundColor = .clear
         appTable.selectionHighlightStyle = .regular
-        appTable.setAccessibilityLabel("Приложения, исключённые из исправления")
+        appTable.setAccessibilityLabel("Правила исправления для приложений")
     }
 
     func numberOfRows(in tableView: NSTableView) -> Int {
-        preferences.excludedApps.count
+        preferences.applicationRuleIDs.count
     }
 
     func tableView(_ tableView: NSTableView,
                    viewFor tableColumn: NSTableColumn?,
                    row: Int) -> NSView? {
-        let bundleID = preferences.excludedApps[row]
+        guard preferences.applicationRuleIDs.indices.contains(row) else { return nil }
+        let bundleID = preferences.applicationRuleIDs[row]
         let application = applicationPresentation(for: bundleID)
         let cell = NSTableCellView()
         let icon = NSImageView(image: application.icon)
         icon.imageScaling = .scaleProportionallyUpOrDown
         icon.translatesAutoresizingMaskIntoConstraints = false
         let labels = verticalLabels(title: application.name,
-                                    subtitle: "В этом приложении исправление выключено",
+                                    subtitle: preferences.excludesApplication(bundleID) ? "Полное исключение: ручные команды тоже выключены" : "Автоматически: " + profileDescription(bundleID),
                                     compact: true)
         labels.translatesAutoresizingMaskIntoConstraints = false
         cell.addSubview(icon)
@@ -1040,15 +1035,29 @@ final class SettingsWindowController: NSWindowController,
         // Keep the segmented control and keyboard/VoiceOver focus in place.
     }
 
-    func controlTextDidEndEditing(_ notification: Notification) {
-        if let field = notification.object as? NSTextField {
-            if field === ignoredWordsField { saveIgnoredWords() }
-            if field === learnedWordsField || field === replacementsField { saveUserDictionary() }
+    private func profileDescription(_ bundleID: String) -> String {
+        let profile = preferences.profile(for: bundleID)
+        let names = [(profile.layout, "раскладка"), (profile.spelling, "орфография"), (profile.snippets, "сокращения")].filter { $0.0 }.map { $0.1 }
+        return names.isEmpty ? "выключено; ручные команды доступны" : names.joined(separator: ", ")
+    }
+    private func updateProfileControls() {
+        let ids = preferences.applicationRuleIDs
+        let id = ids.indices.contains(appTable.selectedRow) ? ids[appTable.selectedRow] : nil
+        selectedProfileID = id
+        for button in profileControls {
+            button.isEnabled = id != nil
+            button.state = id.map { preferences.profile(for: $0).allows(CorrectionFeature(rawValue: button.tag)!) } == true ? .on : .off
         }
     }
-
+    @objc private func changeProfile(_ sender: NSButton) {
+        guard let id = selectedProfileID, let feature = CorrectionFeature(rawValue: sender.tag) else { return }
+        var profile = preferences.profile(for: id)
+        switch feature { case .layout: profile.layout = sender.state == .on; case .spelling: profile.spelling = sender.state == .on; case .snippets: profile.snippets = sender.state == .on }
+        preferences.setProfile(profile, for: id); monitor.invalidateContext(); refresh()
+    }
     func tableViewSelectionDidChange(_ notification: Notification) {
         removeApplicationButton?.isEnabled = appTable.selectedRow >= 0
+        updateProfileControls()
     }
 
     @objc private func retryMonitor() {
@@ -1072,99 +1081,8 @@ final class SettingsWindowController: NSWindowController,
         }
     }
 
-    @objc private func saveUserDictionary() { _ = persistUserDictionary() }
-
-    private func persistUserDictionary() -> Bool {
-        if let field = replacementsField, UserDictionaryFormat.replacements(field.stringValue) == nil {
-            field.textColor = .systemRed
-            showError("Запись словаря не сохранена. Используйте формат опечатка=исправление, без пробелов и повторных ключей.")
-            return false
-        }
-        if let field = learnedWordsField {
-            let draft = UserDictionaryFormat.words(field.stringValue)
-            if draft != learnedWordsBaseline {
-                preferences.learnedWords = preferences.learnedWords.subtracting(learnedWordsBaseline.subtracting(draft)).union(draft.subtracting(learnedWordsBaseline))
-                learnedWordsBaseline = preferences.learnedWords
-            }
-        }
-        if let field = replacementsField {
-            guard let draft = UserDictionaryFormat.replacements(field.stringValue) else {
-                field.toolTip = "Проверьте формат: опечатка=исправление. Не используйте пробелы или повторные ключи."
-                field.textColor = .systemRed
-                return false
-            }
-            field.textColor = .labelColor
-            field.toolTip = nil
-            if draft != replacementsBaseline {
-                var current = preferences.wordReplacements
-                for key in replacementsBaseline.keys where draft[key] == nil { current.removeValue(forKey: key) }
-                for (key, value) in draft where replacementsBaseline[key] != value { current[key] = value }
-                preferences.wordReplacements = current
-                replacementsBaseline = current
-            }
-        }
-        return true
-    }
-
-    @objc private func exportDictionary() {
-        guard persistUserDictionary() else { return }
-        saveIgnoredWords()
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = "KeySwitch-dictionary.json"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        do {
-            let data = try JSONSerialization.data(withJSONObject: ["words": preferences.learnedWords.sorted(), "replacements": preferences.wordReplacements, "ignored": preferences.ignoredWords.sorted()], options: [.prettyPrinted, .sortedKeys])
-            try data.write(to: url, options: .atomic)
-        } catch { showError("Не удалось экспортировать словарь: \(error.localizedDescription)") }
-    }
-
-    @objc private func importDictionary() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.json]
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        do {
-            let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
-            guard ((attributes[.size] as? NSNumber)?.intValue ?? Int.max) <= 1_000_000 else { throw CocoaError(.fileReadTooLarge) }
-            let data = try Data(contentsOf: url)
-            guard let dictionary = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let words = dictionary["words"] as? [String], let replacements = dictionary["replacements"] as? [String: String], let ignored = dictionary["ignored"] as? [String],
-                  words.count + replacements.count + ignored.count <= 5000,
-                  words.allSatisfy({ UserDictionaryFormat.words($0).count == 1 && !$0.contains(",") }),
-                  ignored.allSatisfy({ UserDictionaryFormat.words($0).count == 1 && !$0.contains(",") }),
-                  replacements.allSatisfy({ !$0.key.contains(",") && !$0.value.contains(",") && !$0.key.contains("=") && !$0.value.contains("=") }),
-                  let pairs = UserDictionaryFormat.replacements(replacements.keys.sorted().map { "\($0)=\(replacements[$0]!)" }.joined(separator: ", ")) else { throw CocoaError(.fileReadCorruptFile) }
-            guard persistUserDictionary() else { return }
-            saveIgnoredWords()
-            preferences.learnedWords.formUnion(words.flatMap { UserDictionaryFormat.words($0) })
-            preferences.ignoredWords.formUnion(ignored.flatMap { UserDictionaryFormat.words($0) })
-            preferences.wordReplacements.merge(pairs) { _, incoming in incoming }
-            // Clear old fields before rebuilding; imported data is already committed.
-            learnedWordsField = nil; replacementsField = nil; ignoredWordsField = nil
-            showSection(.spelling)
-        } catch { showError("Не удалось импортировать словарь: \(error.localizedDescription)") }
-    }
-
-    @objc private func saveIgnoredWords() {
-        guard let ignoredWordsField else { return }
-        let words = ignoredWordsField.stringValue
-            .split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
-            .filter { !$0.isEmpty }
-        preferences.saveIgnoredWords(Set(words), baseline: ignoredWordsBaseline)
-        ignoredWordsBaseline = preferences.ignoredWords
-        ignoredWordsField.stringValue = ignoredWordsBaseline.sorted().joined(separator: ", ")
-    }
-
     @objc private func toggleShiftMode(_ sender: NSButton) {
         preferences.shiftLayoutOnly = sender.state == .on
-    }
-
-    @objc private func changeShortcut(_ sender: NSPopUpButton) {
-        guard let command = ManualCommand(rawValue: sender.tag), let shortcut = ShortcutPreset(rawValue: sender.indexOfSelectedItem) else { return }
-        if !preferences.setShortcut(shortcut, for: command) {
-            sender.selectItem(at: preferences.shortcut(for: command).rawValue)
-            showError("Это сочетание уже назначено другому действию KeySwitch.")
-        }
     }
 
     @objc private func changeTheme(_ sender: NSSegmentedControl) {
@@ -1256,18 +1174,20 @@ final class SettingsWindowController: NSWindowController,
                   let self,
                   let url = panel.url,
                   let bundleID = Bundle(url: url)?.bundleIdentifier else { return }
-            if !self.preferences.excludedApps.contains(bundleID) {
+            if !self.preferences.applicationRuleIDs.contains(bundleID) {
                 self.preferences.excludedApps.append(bundleID)
                 self.monitor.invalidateContext()
-                self.refresh()
             }
+            self.selectedProfileID = bundleID
+            self.refresh()
         }
     }
 
     @objc private func removeSelectedApp() {
         let row = appTable.selectedRow
-        guard row >= 0, row < preferences.excludedApps.count else { return }
-        preferences.excludedApps.remove(at: row)
+        guard row >= 0, row < preferences.applicationRuleIDs.count else { return }
+        preferences.removeApplicationRule(preferences.applicationRuleIDs[row])
+        monitor.invalidateContext()
         appTable.deselectAll(nil)
         refresh()
     }
@@ -1297,9 +1217,7 @@ final class SettingsWindowController: NSWindowController,
 
     @discardableResult
     func commitPendingEdits() -> Bool {
-        guard persistUserDictionary() else { return false }
-        saveIgnoredWords()
-        return true
+        dictionaryEditor?.commitPendingEdits() ?? true
     }
 
     func refresh() {
@@ -1316,25 +1234,19 @@ final class SettingsWindowController: NSWindowController,
         statusDetailLabel?.stringValue = state == .ready ? monitor.availabilityDetail : state.detail
         enabledControl?.state = preferences.enabled ? .on : .off
         if selectedSection == .exclusions {
-            let selection = appTable.selectedRow
+            let selectionID = selectedProfileID
             appTable.reloadData()
-            if selection >= 0 && selection < preferences.excludedApps.count {
-                appTable.selectRowIndexes(IndexSet(integer: selection), byExtendingSelection: false)
+            if let selectionID, let row = preferences.applicationRuleIDs.firstIndex(of: selectionID) {
+                appTable.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
             }
+            updateProfileControls()
             removeApplicationButton?.isEnabled = appTable.selectedRow >= 0
-            emptyExclusionsLabel?.isHidden = !preferences.excludedApps.isEmpty
+            emptyExclusionsLabel?.isHidden = !preferences.applicationRuleIDs.isEmpty
         }
         accessStatusLabel?.stringValue = monitor.isTrusted
             ? "Доступ разрешён"
             : "Нужен доступ macOS"
         accessStatusLabel?.textColor = UIStyle.secondaryText
-        if let field = ignoredWordsField {
-            let draft = Set(field.stringValue.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }.filter { !$0.isEmpty })
-            if draft == ignoredWordsBaseline && preferences.ignoredWords != ignoredWordsBaseline {
-                ignoredWordsBaseline = preferences.ignoredWords
-                field.stringValue = ignoredWordsBaseline.sorted().joined(separator: ", ")
-            }
-        }
         spellingModeControl?.selectedSegment = SpellingMode.allCases.firstIndex(
             of: preferences.spellingMode
         ) ?? 0

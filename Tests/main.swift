@@ -271,3 +271,73 @@ expect(SelectedTextTransform.apply(.lowercase, to: "API, ЁЖ!"), "api, ёж!", 
 assert(SelectedTextTransform.apply(.layout, to: String(repeating: "a", count: 4097)) == nil)
 auditDefaults.removePersistentDomain(forName: "local.keyswitch.tests.dictionary")
 print("Dictionary/manual command regressions: OK")
+
+// Audit 2026-10-05: invalid drafts, inert pairs and non-restorable exports.
+assert(UserDictionaryFormat.validatedWords("kept, aero gel") == nil)
+assert(UserDictionaryFormat.validatedWords("kept, aerogel") == ["kept", "aerogel"])
+assert(UserDictionaryFormat.validatedWords(String(repeating: "a", count: 65)) == nil)
+assert(UserDictionaryFormat.replacements("abc=123") == nil)
+assert(UserDictionaryFormat.replacements("abc=тестtest") == nil)
+let oldIgnored = DictionarySnapshot(words: ["aerogel"], replacements: ["кейсвич": "KeySwitch"], ignored: ["two words", String(repeating: "x", count: 65)])
+assert(try! DictionarySnapshot.decode(oldIgnored.encoded()) == oldIgnored)
+let imported = DictionarySnapshot(words: ["other"], replacements: ["кейсвич": "KeySwitch"], ignored: ["api"])
+let mergedDictionary = try! oldIgnored.merging(imported)
+assert(Set(mergedDictionary.words) == ["aerogel", "other"])
+assert(Set(mergedDictionary.ignored).contains("two words"))
+let fullDictionary = DictionarySnapshot(words: (0..<5000).map { "word\($0)" }, replacements: [:], ignored: [])
+do { _ = try fullDictionary.merging(DictionarySnapshot(words: ["extra"], replacements: [:], ignored: [])); assertionFailure("Merged limit must be enforced") } catch { }
+assert(!ShortcutBinding(keyCode: 32, modifiers: ShortcutBinding.control | ShortcutBinding.option, title: "VO U").allowed)
+assert(!ShortcutBinding(keyCode: 49, modifiers: ShortcutBinding.command, title: "Spotlight").allowed)
+let custom = ShortcutBinding(keyCode: 37, modifiers: ShortcutBinding.command | ShortcutBinding.control, title: "⌃⌘L")
+assert(auditPreferences.setShortcutBinding(custom, for: .layout))
+assert(!auditPreferences.setShortcutBinding(custom, for: .uppercase))
+assert(auditPreferences.shortcutBinding(for: .layout)?.matches(keyCode: 37, modifiers: custom.modifiers | (1 << 16)) == true)
+assert(auditPreferences.setShortcutBinding(nil, for: .layout))
+assert(auditPreferences.shortcutBinding(for: .layout) == nil)
+auditDefaults.removePersistentDomain(forName: "local.keyswitch.tests.dictionary")
+print("Audit dictionary/shortcut regressions: OK")
+
+assert(!UserDictionaryFormat.validWord("word."))
+assert(!UserDictionaryFormat.validWord("foo/bar"))
+assert(!UserDictionaryFormat.validWord("🙂"))
+
+let featureSuite = "local.keyswitch.tests.features"
+let featureDefaults = UserDefaults(suiteName: featureSuite)!
+featureDefaults.removePersistentDomain(forName: featureSuite)
+let features = Preferences(defaults: featureDefaults)
+assert(!features.snippetsEnabled)
+features.snippets = ["спс": "Спасибо, хорошего дня!", "sig": "Best regards, Алексей 🙂"]
+features.snippetsEnabled = true
+assert(features.snippet(for: "спс", boundary: " ", bundleID: "editor") == "Спасибо, хорошего дня!")
+for separator in ["\n", "\t", ".", "!", "", "  "] { assert(features.snippet(for: "sig", boundary: separator, bundleID: "editor") == nil) }
+features.ignoredWords = ["sig"]
+assert(features.snippet(for: "SIG", boundary: " ", bundleID: "editor") == nil)
+features.ignoredWords = []
+features.excludedApps = ["editor"]
+assert(features.snippet(for: "sig", boundary: " ", bundleID: "editor") == nil)
+features.setProfile(ApplicationProfile(layout: false, spelling: true, snippets: true), for: "editor")
+assert(!features.excludesApplication("editor"))
+assert(!features.profile(for: "editor").layout && features.profile(for: "editor").spelling)
+assert(features.snippet(for: "SIG", boundary: " ", bundleID: "editor") == "Best regards, Алексей 🙂")
+assert(Preferences(defaults: featureDefaults).profile(for: "editor") == features.profile(for: "editor"))
+features.setProfile(.none, for: "editor")
+assert(!features.excludesApplication("editor") && features.snippet(for: "sig", boundary: " ", bundleID: "editor") == nil)
+features.removeApplicationRule("editor")
+assert(features.profile(for: "editor") == .all && features.applicationRuleIDs.isEmpty)
+features.enabled = false
+assert(features.snippet(for: "sig", boundary: " ", bundleID: "editor") == nil)
+assert(!SnippetFormat.validPhrase("\nHello") && !SnippetFormat.validPhrase("a\tb") && !SnippetFormat.validPhrase(" "))
+assert(SnippetFormat.validPhrase(String(repeating: "я", count: 256)))
+assert(!SnippetFormat.validPhrase(String(repeating: "я", count: 257)))
+let unicodePhrase = String(repeating: "Привет 👨‍👩‍👧‍👦 e\u{301}! ", count: 8)
+let chunks = SnippetFormat.chunks(unicodePhrase)!
+assert(chunks.joined() == unicodePhrase && chunks.allSatisfy { $0.utf16.count <= 20 })
+let oldJSON = Data(#"{"words":["hello"],"replacements":{},"ignored":[]}"#.utf8)
+assert(try! DictionarySnapshot.decode(oldJSON).snippets.isEmpty)
+let phrases = DictionarySnapshot(words: [], replacements: [:], ignored: [], snippets: ["sig": "Best regards, Алексей 🙂"])
+assert(try! DictionarySnapshot.decode(phrases.encoded()) == phrases)
+let importedPhrases = try phrases.merging(DictionarySnapshot(words: [], replacements: [:], ignored: [], snippets: ["SIG": "С уважением, Алексей"]))
+assert(importedPhrases.snippets == ["sig": "С уважением, Алексей"])
+do { _ = try phrases.merging(DictionarySnapshot(words: [], replacements: [:], ignored: [], snippets: ["SIG": "One", "sig": "Two"])); assertionFailure("Case collision must throw") } catch { }
+featureDefaults.removePersistentDomain(forName: featureSuite)
+print("Application profiles / snippet policy / transfer regressions: OK")

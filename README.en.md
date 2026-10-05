@@ -121,12 +121,22 @@ Closing the window keeps the app running. Quit through the KeySwitch menu.
 
 Correct vocabulary, known names, technical terms and identifiers are protected before conversion. Layout conversion preserves letters and case. Automatic spelling uses curated common typo rules; ambiguous dictionary guesses remain suggestions accepted with double Shift. Quotes/brackets are preserved and Tab completes a word. Address/path/code separators are conservative. Mixed identifiers, language collisions and unsupported foreign characters may require manual conversion. The primary supported layout pair is English QWERTY / Russian ЙЦУКЕН.
 
-## Manual actions and personal dictionary (3.2.0)
+## Manual actions and personal dictionary (3.2.1)
 
-The “Ручные действия” menu converts the current word or selection, applies a suggestion, undoes the last automatic correction, and changes selection case. Automatic undo expires after further input, a field change, or 15 seconds. Configure individual Control + Option shortcuts in appearance/startup settings; new shortcuts are disabled by default. Conflicts between KeySwitch commands are rejected. Conflicts with other apps are not detected.
+The “Ручные действия” menu converts the current word or selection, applies a suggestion, undoes the last automatic correction, and changes selection case. Automatic undo expires after further input, a field change, or 15 seconds. Record a shortcut with Command or Control in the dedicated “Ручные действия” section. Delete clears it; Escape cancels recording. New shortcuts are disabled by default. Known system shortcuts, including Control + Option + U (VoiceOver), and conflicts between KeySwitch commands are rejected. Conflicts with other apps are not detected.
 
-Double Shift retains its legacy contextual actions. Enable “Двойной Shift — только раскладка” to reserve it for layout conversion; accept suggestions with the button or a separate command.
+New settings use double Shift only for layout conversion. Existing explicit preferences are preserved. Turn off “Двойной Shift — только раскладка” to restore the legacy contextual actions; suggestions can also be accepted with their button or a separate command.
 
-The personal dictionary accepts correct words and explicit typo=replacement pairs. Learned words help detect layout mistakes. Explicit pairs apply at word boundaries while corrections are enabled, independently of spelling mode; ignored words take priority. JSON export/import merges words; incoming pairs replace matching keys.
+The dedicated “Мой словарь” section provides searchable rows for correct words, ignored words and replacement pairs. Save rules explicitly; invalid drafts remain visible and cannot overwrite committed data. Words are limited to 64 characters. Numeric-only or mixed Russian/English replacement values are rejected before saving. Older ignored entries remain export/import compatible. Learned words help detect layout mistakes. Explicit pairs apply at word boundaries while corrections are enabled, independently of spelling mode; ignored words take priority. JSON export/import merges words; incoming pairs replace matching keys.
 
 Selection layout conversion assumes one source layout throughout the phrase and preserves whitespace and outer punctuation. Mixed-language selections may produce unwanted results. Editing requires writable AXSelectedText; the clipboard is not used. Use the editor's own undo for manual selection edits.
+
+Manual command failures show a brief explanation without taking focus from the editor.
+
+## Application rules and snippets (local 3.3.0)
+
+Select an application in the exclusions section to independently control automatic layout correction, spelling and snippets. Partial profiles leave manual commands available; legacy full exclusions block them too. Removing the rule restores global defaults.
+
+Add an “Abbreviation → phrase” rule in the personal dictionary, save it and enable expansion after Space. Triggers contain one word up to 64 characters; phrases contain one line up to 256 characters and 512 UTF-16 units. Enter, Tab and punctuation do not expand snippets. Expansion preserves the input source. Ignored words take precedence. Snippets are included in dictionary transfer; this version reads legacy files.
+
+Undo uses the existing verified-field guard and expires after new input, a context change or 15 seconds. Use the manual undo command when double Shift is configured for layout only. Physical TextEdit expansion, trigger restoration and selected-text layout conversion were confirmed. Local PKG/ZIP payloads and startup were verified; full installation and publication remain pending.

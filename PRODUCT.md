@@ -22,7 +22,7 @@ Menu-bar utility with a settings window. Global keyboard events and synthetic re
 
 ## Capabilities and Constraints
 
-Implemented in 3.2.0 (local package verified; validation limits documented below): guarded selected-text layout/case editing, configurable manual commands, learned vocabulary and explicit correction pairs with JSON transfer, RU/EN conversion, system offline dictionaries and built-in names, spelling modes, ignored words, application exclusions, launch at login, appearance selection, optional GitHub release checks.
+Implemented in local 3.3.0 (component tests, UI and core physical TextEdit workflows verified; local PKG/ZIP verified, installation and release still pending): per-application automatic feature profiles, opt-in local phrase expansion and dictionary transfer, guarded selected-text layout/case editing, recordable manual shortcuts and explanatory failures, searchable row-based vocabulary and validated correction pairs with compatible JSON transfer, RU/EN conversion, system offline dictionaries and built-in names, spelling modes, ignored words, application exclusions, launch at login, appearance selection, optional GitHub release checks.
 
 Not implemented in this repository: voice capture and transcription, AI providers and prompt workflows, translation, dictionary synchronization, Windows/Linux integrations, licensing/billing, a marketing website.
 

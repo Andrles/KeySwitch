@@ -90,6 +90,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             monitor.start()
         }
         lastMonitorRunning = monitor.isRunning
+        if CommandLine.arguments.contains("--runtime-check") {
+            print("KeySwitch runtime check: trusted=\(monitor.isTrusted) running=\(monitor.isRunning) target=TextEdit isolatedPreferences=true")
+            fflush(stdout)
+        }
         monitor.onPermissionChanged = { [weak self] _ in
             self?.settingsController?.refresh()
             self?.refreshMenu()
@@ -310,18 +314,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func manualAction(_ sender: NSMenuItem) {
         guard let command = ManualCommand(rawValue: sender.tag) else { return }
-        if !performManual(command) { NSSound.beep() }
+        _ = performManual(command)
     }
 
     private func performManual(_ command: ManualCommand) -> Bool {
+        let result: ManualEditResult
         switch command {
         case .layout:
-            return SelectionEditor.perform(command) || monitor.convertCurrentWord()
-        case .uppercase, .lowercase:
-            return SelectionEditor.perform(command)
-        case .accept: return monitor.acceptSuggestion()
-        case .undo: return monitor.restoreLastCorrection()
+            let selection = SelectionEditor.performResult(command)
+            if selection == .noSelection {
+                result = monitor.convertCurrentWord() ? .success : .noWord
+            } else { result = selection }
+        case .uppercase, .lowercase: result = SelectionEditor.performResult(command)
+        case .accept: result = monitor.acceptSuggestion() ? .success : .noSuggestion
+        case .undo: result = monitor.restoreLastCorrection() ? .success : .noUndo
         }
+        if result != .success { ManualFeedback.shared.show(result.message) }
+        return result == .success
     }
 
     @objc private func checkPermission() {

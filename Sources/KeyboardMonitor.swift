@@ -20,6 +20,7 @@ final class KeyboardMonitor {
         let suffix: VerifiedTextSuffix
         let replacement: String
         let language: Language?
+        var preserveInputSource = false
         let expires: TimeInterval
     }
     private var manualInputRevision = 0
@@ -138,6 +139,12 @@ final class KeyboardMonitor {
         if event.getIntegerValueField(.eventSourceUserData) == injectedMarker {
             return Unmanaged.passUnretained(event)
         }
+        // Diagnostic runs must never edit unrelated apps or consume their shortcuts.
+        if CommandLine.arguments.contains("--runtime-check"),
+           NSWorkspace.shared.frontmostApplication?.bundleIdentifier != "com.apple.TextEdit" {
+            invalidateContext()
+            return Unmanaged.passUnretained(event)
+        }
         if type == .keyDown || [.leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel].contains(type) {
             manualInputRevision += 1
         }
@@ -149,8 +156,8 @@ final class KeyboardMonitor {
         // Keep the target; each edit still validates the external field afresh.
         if isInteractingWithMenu?() == true { return Unmanaged.passUnretained(event) }
         if type == .keyDown,
-           event.flags.intersection([.maskCommand, .maskControl, .maskAlternate, .maskShift]) == [.maskControl, .maskAlternate],
-           let command = ManualCommand.allCases.first(where: { preferences.shortcut(for: $0).keyCode == event.getIntegerValueField(.keyboardEventKeycode) }) {
+           NSWorkspace.shared.frontmostApplication?.processIdentifier != ProcessInfo.processInfo.processIdentifier,
+           let command = ManualCommand.allCases.first(where: { preferences.shortcutBinding(for: $0)?.matches(keyCode: event.getIntegerValueField(.keyboardEventKeycode), modifiers: event.flags.rawValue) == true }) {
             // Own a configured shortcut even if the edit is unsupported. Letting
             // it reach the editor can insert control characters into selection.
             let revision = manualInputRevision
@@ -161,7 +168,7 @@ final class KeyboardMonitor {
                 guard let self, self.manualInputRevision == revision, self.isRunning,
                       NSWorkspace.shared.frontmostApplication?.processIdentifier == processID,
                       InputSourceController.currentIdentifier() == sourceID else { return }
-                if self.onManualCommand?(command) != true { NSSound.beep() }
+                _ = self.onManualCommand?(command)
             }
             return nil
         }
@@ -229,8 +236,14 @@ final class KeyboardMonitor {
             invalidateContext()
             return Unmanaged.passUnretained(event)
         }
-        if let correction = layoutCorrection(for: currentWord),
-           replaceTypedText(correction, boundaryEvent: event) {
+        let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? ""
+        if let phrase = preferences.snippet(for: currentWord, boundary: text, bundleID: bundleID),
+           replaceTypedText(Correction(original: currentWord, replacement: phrase, language: InputSourceController.currentLanguage() ?? .english), boundaryEvent: event, preserveInputSource: true, feature: .snippets) {
+            currentWord = ""; wordContext = nil; expectedCaret = nil
+            return nil
+        }
+        if preferences.profile(for: bundleID).layout, let correction = layoutCorrection(for: currentWord),
+           replaceTypedText(correction, boundaryEvent: event, feature: .layout) {
             currentWord = ""
             wordContext = nil
             expectedCaret = nil
@@ -239,12 +252,12 @@ final class KeyboardMonitor {
 
         let spellingParts = TextToken(currentWord)
         let spellingMode = preferences.spellingMode
-        if spellingMode != .off,
+        if preferences.profile(for: bundleID).spelling, spellingMode != .off,
            !preferences.ignoredWords.contains(spellingParts.word.lowercased()),
            !preferences.learnedWords.contains(spellingParts.word.lowercased()) {
             let automatic = spellingMode == .autoCorrect
                 ? engine.spellingCorrection(for: currentWord, automatic: true) : nil
-            if let automatic, replaceTypedText(automatic, boundaryEvent: event) {
+            if let automatic, replaceTypedText(automatic, boundaryEvent: event, feature: .spelling) {
                 currentWord = ""
                 wordContext = nil
                 expectedCaret = nil
@@ -335,7 +348,7 @@ final class KeyboardMonitor {
               context.verifies(edit.suffix) else { return false }
         let language = edit.language ?? InputSourceController.currentLanguage() ?? .english
         let correction = Correction(original: edit.suffix.text, replacement: edit.replacement, language: language)
-        guard replaceTypedText(correction, verifiedContext: context, keepUndo: keepUndo) else { return false }
+        guard replaceTypedText(correction, verifiedContext: context, keepUndo: keepUndo, preserveInputSource: edit.preserveInputSource) else { return false }
         currentWord = ""
         wordContext = nil
         expectedCaret = nil
@@ -344,7 +357,7 @@ final class KeyboardMonitor {
 
     @discardableResult
     private func replaceTypedText(_ correction: Correction, boundaryEvent: CGEvent? = nil,
-                                  verifiedContext: TextInputContext? = nil, keepUndo: Bool = true) -> Bool {
+                                  verifiedContext: TextInputContext? = nil, keepUndo: Bool = true, preserveInputSource: Bool = false, feature: CorrectionFeature? = nil) -> Bool {
         guard let context = verifiedContext ?? TextInputContext.current(),
               verifiedContext != nil || wordContext.map({ context.isSameField(as: $0) }) == true,
               context.verifies(VerifiedTextSuffix(text: correction.original, caret: context.selection.location)) else {
@@ -372,7 +385,9 @@ final class KeyboardMonitor {
             }
         }
         // Recheck after linguistic work and allocation, just before posting.
-        guard let fresh = TextInputContext.current(), fresh.isSameField(as: context),
+        guard preferences.enabled, !frontmostAppIsExcluded(),
+              feature.map({ preferences.profile(for: NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "").allows($0) }) ?? true,
+              let fresh = TextInputContext.current(), fresh.isSameField(as: context),
               fresh.verifies(VerifiedTextSuffix(text: correction.original, caret: context.selection.location)) else {
             return false
         }
@@ -380,7 +395,7 @@ final class KeyboardMonitor {
             event.setIntegerValueField(.eventSourceUserData, value: injectedMarker)
             event.postToPid(context.processID)
         }
-        InputSourceController.select(language: correction.language)
+        if !preserveInputSource { InputSourceController.select(language: correction.language) }
         if keepUndo { preferences.correctionCount += 1 }
         if keepUndo && canUndo {
             // Source changes are intentional here; save the expected new source.
@@ -396,7 +411,7 @@ final class KeyboardMonitor {
                 suffix: VerifiedTextSuffix(text: correction.replacement + boundary,
                     caret: context.selection.location - correction.original.utf16.count
                         + correction.replacement.utf16.count + boundary.utf16.count),
-                replacement: correction.original + boundary, language: oldLanguage,
+                replacement: correction.original + boundary, language: oldLanguage, preserveInputSource: preserveInputSource,
                 expires: ProcessInfo.processInfo.systemUptime + 15)
         }
         if preferences.playSound && keepUndo { NSSound.beep() }
@@ -411,10 +426,15 @@ final class KeyboardMonitor {
     }
 
     private func textEvents(_ text: String) -> [CGEvent]? {
-        let units = Array(text.utf16)
-        guard let pair = keyEvents(code: 0) else { return nil }
-        for event in pair { event.keyboardSetUnicodeString(stringLength: units.count, unicodeString: units) }
-        return pair
+        guard let chunks = SnippetFormat.chunks(text) else { return nil }
+        var events: [CGEvent] = []
+        for chunk in chunks {
+            let units = Array(chunk.utf16)
+            guard let pair = keyEvents(code: 0) else { return nil }
+            for event in pair { event.keyboardSetUnicodeString(stringLength: units.count, unicodeString: units) }
+            events.append(contentsOf: pair)
+        }
+        return events
     }
 
     private func unicodeString(from event: CGEvent) -> String {

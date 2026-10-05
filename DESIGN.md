@@ -25,6 +25,8 @@ the menu bar uses template switching arrows when ready, a pause symbol when paus
 and a warning symbol when access or monitoring is unavailable.
 
 Manual commands remain in a separate menu and configurable shortcut group. The
-personal dictionary belongs under spelling settings. Invalid dictionary drafts
+personal dictionary has its own searchable row editor. Manual actions have a dedicated settings section. Saving a rule is explicit; invalid drafts block navigation and remain visible. Invalid dictionary drafts
 block navigation/export and remain visible for correction. Changing spelling
 mode updates its caption in place, preserving native keyboard focus.
+
+Application rules distinguish full legacy exclusions from partial automatic feature profiles; the selected application's identity stays stable after edits. Snippets reuse the personal dictionary editor, with an explicit global switch, dedicated field labels, phrase-specific validation and visible save/disabled/error feedback. No additional navigation section.

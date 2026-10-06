@@ -1,8 +1,27 @@
 #!/bin/bash
 set -euo pipefail
-# Only stop processes whose executable belongs to a verified KeySwitch bundle.
+volume="${3:-/}"
+applications="${volume%/}/Applications"
+app="$applications/KeySwitch.app"
+# Validate the destination before stopping any running application.
+if [[ -L "$applications" || -L "$app" ]]; then
+    echo 'KeySwitch installation destination must not be a symbolic link.' >&2
+    exit 1
+fi
+if [[ -e "$app" ]]; then
+    identifier=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist" 2>/dev/null) || exit 1
+    if [[ "$identifier" != local.keyswitch.app ]]; then
+        echo 'An unrelated application occupies the KeySwitch installation path.' >&2
+        exit 1
+    fi
+fi
 # Alternate-volume installs must not stop the running system's application.
-[[ "${3:-/}" == / ]] || exit 0
+[[ "$volume" == / ]] || exit 0
+# A failed process inventory must block replacement of a potentially running app.
+processes=$(/bin/ps -axo pid=,comm=) || {
+    echo 'Cannot check running applications. Installation was stopped.' >&2
+    exit 1
+}
 pids=()
 while read -r pid executable; do
     [[ "$executable" == */Contents/MacOS/KeySwitch ]] || continue
@@ -12,8 +31,8 @@ while read -r pid executable; do
     [[ "$identifier" == local.keyswitch.app ]] || continue
     kill -TERM "$pid" 2>/dev/null || true
     pids+=("$pid")
-done < <(/bin/ps -axo pid=,comm=)
-# Bash 3.2 treats an empty array as unset under nounset. Expand only when set.
+done <<< "$processes"
+# Bash 3.2 treats an empty array as unset under nounset.
 for pid in ${pids[@]+"${pids[@]}"}; do
     for attempt in {1..10}; do
         kill -0 "$pid" 2>/dev/null || break
@@ -24,10 +43,3 @@ for pid in ${pids[@]+"${pids[@]}"}; do
         exit 1
     fi
 done
-# Do not replace an unrelated app which happens to have the same filename.
-app='/Applications/KeySwitch.app'
-if [[ -e "$app" || -L "$app" ]]; then
-    [[ ! -L "$app" ]] || exit 1
-    identifier=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist" 2>/dev/null) || exit 1
-    [[ "$identifier" == local.keyswitch.app ]] || exit 1
-fi

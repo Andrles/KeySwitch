@@ -3,6 +3,11 @@ set -euo pipefail
 volume="${3:-/}"
 applications="${volume%/}/Applications"
 installed="$applications/KeySwitch.app"
+if [[ -L "$applications" || -L "$installed" || ! -d "$installed" ]]; then
+    echo 'Invalid KeySwitch installation destination; old copies were kept.' >&2
+    exit 1
+fi
+[[ -x "$installed/Contents/MacOS/KeySwitch" ]] || exit 1
 # Cleanup only after the replacement is installed and its signature verifies.
 /usr/bin/codesign --verify --deep --strict "$installed"
 identifier=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$installed/Contents/Info.plist")

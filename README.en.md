@@ -36,12 +36,12 @@
 
 The command selects a `.pkg` asset from the latest published GitHub Release,
 asks for an administrator password to install it into `/Applications`, and
-launches the app. The previous version is updated and preferences are preserved.
+launches the app. The previous version is replaced. After the new app passes verification, duplicate KeySwitch bundles (such as “KeySwitch 2”) are removed from `/Applications`. Preferences are preserved. Ad-hoc signed updates may require Accessibility reauthorization; unrelated apps and symbolic links are left intact.
 [Review the installation script](https://github.com/Andrles/KeySwitch/blob/main/scripts/install.sh) before running it.
 
 ### Manual installation
 
-1. Download the latest `KeySwitch-*.pkg` or `KeySwitch-*.zip` from **Releases**.
+1. Download the latest `KeySwitch-*.pkg` or `KeySwitch-*.zip` from **Releases**. Open the PKG to replace the previous version and remove duplicate copies from `/Applications`; ZIP installation requires manual replacement.
 2. Move KeySwitch to `/Applications` when using the ZIP archive.
 3. Launch the app.
 4. Grant access in **System Settings → Privacy & Security → Accessibility**.

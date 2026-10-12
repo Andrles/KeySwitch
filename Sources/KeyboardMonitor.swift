@@ -33,6 +33,8 @@ final class KeyboardMonitor {
     var onManualCommand: ((ManualCommand) -> Bool)?
     var onCorrection: ((Language) -> Void)?
     var onSpellingIssue: ((String, String) -> Void)?
+    var onSuggestionResult: ((Bool) -> Void)?
+    var isFeedbackVisible: (() -> Bool)?
     var isInteractingWithMenu: (() -> Bool)?
     var preservesFeedbackAtPoint: ((CGPoint) -> Bool)?
     var onFeedbackInvalidated: (() -> Void)?
@@ -155,6 +157,13 @@ final class KeyboardMonitor {
         // Menu navigation is consumed by AppKit, not by the external editor.
         // Keep the target; each edit still validates the external field afresh.
         if isInteractingWithMenu?() == true { return Unmanaged.passUnretained(event) }
+        // Own Escape only while our feedback is visible; otherwise the editor owns it.
+        if type == .keyDown, event.getIntegerValueField(.keyboardEventKeycode) == 53,
+           event.flags.intersection([.maskCommand, .maskControl, .maskAlternate, .maskShift]).isEmpty,
+           isFeedbackVisible?() == true {
+            invalidateContext()
+            return nil
+        }
         if type == .keyDown,
            NSWorkspace.shared.frontmostApplication?.processIdentifier != ProcessInfo.processInfo.processIdentifier,
            let command = ManualCommand.allCases.first(where: { preferences.shortcutBinding(for: $0)?.matches(keyCode: event.getIntegerValueField(.keyboardEventKeycode), modifiers: event.flags.rawValue) == true }) {
@@ -197,6 +206,11 @@ final class KeyboardMonitor {
 
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
         let flags = event.flags
+        // Tab moves focus: never create an edit for a field being left.
+        if keyCode == 48 {
+            invalidateContext()
+            return Unmanaged.passUnretained(event)
+        }
         if flags.contains(.maskCommand) || flags.contains(.maskControl) || flags.contains(.maskAlternate) {
             invalidateContext()
             return Unmanaged.passUnretained(event)
@@ -264,17 +278,23 @@ final class KeyboardMonitor {
                 return nil
             }
             // Uncertain guesses remain hints even in automatic mode.
-            if let hint = engine.spellingCorrection(for: currentWord, automatic: false) {
+            // Enter may submit a form. Automatic corrections still precede the
+            // replayed boundary, but a deferred hint must never outlive submission.
+            if !text.contains("\n"), !text.contains("\r"),
+               let hint = engine.spellingCorrection(for: currentWord, automatic: false) {
                 let suffix = currentWord + text
                 if context.verifies(VerifiedTextSuffix(text: currentWord, caret: context.selection.location)) {
-                    pendingSuggestion = PendingEdit(context: context,
+                    let edit = PendingEdit(context: context,
                         suffix: VerifiedTextSuffix(text: suffix, caret: context.selection.location + text.utf16.count),
                         replacement: hint.replacement + text, language: hint.language,
                         expires: .infinity)
                     let generation = feedbackGeneration
-                    DispatchQueue.main.async { [weak self] in
-                        guard let self, self.feedbackGeneration == generation,
-                              self.pendingSuggestion != nil else { return }
+                    // Let the editor receive the separator before checking its new suffix.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in
+                        guard let self, self.feedbackGeneration == generation else { return }
+                        self.pendingSuggestion = edit
+                        guard self.validatePendingSuggestion() else { return }
+                        self.popupDiagnostic("show original=\(self.testToken(spellingParts.word)) replacement=\(self.testToken(TextToken(hint.replacement).word))")
                         self.onSpellingIssue?(spellingParts.word, TextToken(hint.replacement).word)
                     }
                 }
@@ -285,6 +305,13 @@ final class KeyboardMonitor {
         expectedCaret = nil
         return Unmanaged.passUnretained(event)
     }
+
+    #if KEYSWITCH_TESTING
+    /// Run the real event policy without installing a global event tap.
+    func consumesTestKey(_ event: CGEvent) -> Bool {
+        handle(type: .keyDown, event: event) == nil
+    }
+    #endif
 
     private func handleShift(_ event: CGEvent) {
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
@@ -321,10 +348,30 @@ final class KeyboardMonitor {
 
     @discardableResult
     func acceptSuggestion() -> Bool {
-        guard let edit = pendingSuggestion else { return false }
+        guard let edit = pendingSuggestion else {
+            popupDiagnostic("accept no_pending_edit")
+            onSuggestionResult?(false); return false
+        }
+        popupDiagnostic("accept original=\(testToken(edit.suffix.text)) replacement=\(testToken(edit.replacement))")
         pendingSuggestion = nil
-        onFeedbackInvalidated?()
-        return performPendingEdit(edit, keepUndo: true)
+        let applied = performPendingEdit(edit, keepUndo: true)
+        onSuggestionResult?(applied)
+        return applied
+    }
+
+    /// Also called while idle: focus can change without a keyboard/mouse event.
+    @discardableResult
+    func validatePendingSuggestion() -> Bool {
+        guard let edit = pendingSuggestion else { return false }
+        guard preferences.enabled, !frontmostAppIsExcluded(),
+              preferences.profile(for: NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "").spelling,
+              preferences.spellingMode != .off,
+              let context = TextInputContext.current(), context.isSameField(as: edit.context),
+              context.verifies(edit.suffix) else {
+            invalidateContext()
+            return false
+        }
+        return true
     }
 
     @discardableResult
@@ -348,7 +395,18 @@ final class KeyboardMonitor {
               context.verifies(edit.suffix) else { return false }
         let language = edit.language ?? InputSourceController.currentLanguage() ?? .english
         let correction = Correction(original: edit.suffix.text, replacement: edit.replacement, language: language)
-        guard replaceTypedText(correction, verifiedContext: context, keepUndo: keepUndo, preserveInputSource: edit.preserveInputSource) else { return false }
+        let oldLanguage = InputSourceController.currentLanguage()
+        let outcome = SuffixReplacement.apply(edit.suffix, replacement: edit.replacement,
+                                             using: AXSuffixEditor(context: context))
+        popupDiagnostic("transaction result=\(outcome)")
+        guard outcome == .applied else { return false }
+        if let range = edit.suffix.range {
+            let updated = NSRange(location: range.location, length: edit.replacement.utf16.count)
+            popupDiagnostic("readback=\(testToken(context.text(in: updated) ?? ""))")
+        }
+        if !edit.preserveInputSource { InputSourceController.select(language: language) }
+        recordCorrection(correction, context: context, boundary: "", oldLanguage: oldLanguage,
+                         keepUndo: keepUndo, canUndo: true, preserveInputSource: edit.preserveInputSource)
         currentWord = ""
         wordContext = nil
         expectedCaret = nil
@@ -396,6 +454,14 @@ final class KeyboardMonitor {
             event.postToPid(context.processID)
         }
         if !preserveInputSource { InputSourceController.select(language: correction.language) }
+        recordCorrection(correction, context: context, boundary: boundary, oldLanguage: oldLanguage,
+                         keepUndo: keepUndo, canUndo: canUndo, preserveInputSource: preserveInputSource)
+        return true
+    }
+
+    private func recordCorrection(_ correction: Correction, context: TextInputContext,
+                                  boundary: String, oldLanguage: Language?, keepUndo: Bool,
+                                  canUndo: Bool, preserveInputSource: Bool) {
         if keepUndo { preferences.correctionCount += 1 }
         if keepUndo && canUndo {
             // Source changes are intentional here; save the expected new source.
@@ -416,7 +482,23 @@ final class KeyboardMonitor {
         }
         if preferences.playSound && keepUndo { NSSound.beep() }
         DispatchQueue.main.async { [weak self] in self?.onCorrection?(correction.language) }
-        return true
+    }
+
+    // Diagnostics classify only three supplied test words, never log arbitrary input.
+    private func testToken(_ text: String) -> String {
+        let word = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        switch word {
+        case "превет": return "test_typo"
+        case "привет": return "test_expected"
+        case "пресет": return "test_wrong"
+        default: return "other"
+        }
+    }
+
+    private func popupDiagnostic(_ status: String) {
+        guard CommandLine.arguments.contains("--runtime-check") else { return }
+        print("KeySwitch popup diagnostic: " + status)
+        fflush(stdout)
     }
 
     private func keyEvents(code: CGKeyCode) -> [CGEvent]? {

@@ -15,6 +15,7 @@ final class DictionaryEditor: NSStackView, NSTableViewDataSource, NSTableViewDel
     private let replacementLabel = NSTextField(labelWithString: "Исправление")
     private let status = NSTextField(wrappingLabelWithString: "")
     private let remove = NSButton(title: "Удалить выбранное", target: nil, action: nil)
+    private let edit = NSButton(title: "Изменить выбранное", target: nil, action: nil)
     private var editing: Row?
     private var rows: [Row] = []
     private struct Row: Equatable { let kind: Int; let word: String; let replacement: String }
@@ -42,7 +43,8 @@ final class DictionaryEditor: NSStackView, NSTableViewDataSource, NSTableViewDel
         addArrangedSubview(scroll)
         let buttons = NSStackView()
         buttons.spacing = 10
-        buttons.addArrangedSubview(NSButton(title: "Изменить выбранное", target: self, action: #selector(editSelected)))
+        edit.target = self; edit.action = #selector(editSelected); edit.isEnabled = false
+        buttons.addArrangedSubview(edit)
         remove.target = self; remove.action = #selector(removeSelected); remove.isEnabled = false
         buttons.addArrangedSubview(remove); addArrangedSubview(buttons)
         let instruction = NSTextField(wrappingLabelWithString: "Добавьте правильное слово, запрет на исправление, собственную замену или сокращение в готовую фразу.")
@@ -95,7 +97,7 @@ final class DictionaryEditor: NSStackView, NSTableViewDataSource, NSTableViewDel
         let value = snapshot
         rows = value.words.map { Row(kind: 0, word: $0, replacement: "") } + value.ignored.map { Row(kind: 1, word: $0, replacement: "") } + value.replacements.map { Row(kind: 2, word: $0.key, replacement: $0.value) } + value.snippets.map { Row(kind: 3, word: $0.key, replacement: $0.value) }
         rows = rows.filter { query.isEmpty || $0.word.lowercased().contains(query) || $0.replacement.lowercased().contains(query) }.sorted { ($0.word, $0.kind) < ($1.word, $1.kind) }
-        table.reloadData(); remove.isEnabled = false
+        table.reloadData(); remove.isEnabled = false; edit.isEnabled = false
         if rows.isEmpty { message(query.isEmpty ? "Словарь пуст. Добавьте первое правило ниже." : "Ничего не найдено. Измените запрос.") }
         else { message("Найдено правил: \(rows.count).") }
     }
@@ -113,7 +115,10 @@ final class DictionaryEditor: NSStackView, NSTableViewDataSource, NSTableViewDel
         let field = NSTextField(labelWithString: text); field.lineBreakMode = .byTruncatingTail; field.toolTip = text
         return field
     }
-    func tableViewSelectionDidChange(_ notification: Notification) { remove.isEnabled = table.selectedRow >= 0 }
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        let selected = rows.indices.contains(table.selectedRow)
+        remove.isEnabled = selected; edit.isEnabled = selected
+    }
     @objc private func toggleSnippets(_ sender: NSButton) { preferences.snippetsEnabled = sender.state == .on; onRulesChanged?(); message(preferences.snippetsEnabled ? "Сокращения включены. Срабатывают после пробела; отмена доступна 15 секунд до нового ввода." : "Сокращения выключены. Правила сохранены.") }
     @objc private func changeKind() {
         let isSnippet = kind.indexOfSelectedItem == 3

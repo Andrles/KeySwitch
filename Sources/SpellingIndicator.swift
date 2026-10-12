@@ -6,6 +6,12 @@ final class SpellingIndicator {
     private let stack = NSStackView()
     private let hint = NSTextField(wrappingLabelWithString: "")
     private var word = ""
+    private var dismissal: DispatchWorkItem?
+    private let actions = NSStackView()
+    private let ignoreButton = NSButton(title: "Больше не предлагать это слово", target: nil, action: nil)
+    private let undoButton = NSButton(title: "Отменить исключение", target: nil, action: nil)
+    var onUndoIgnore: ((String) -> Void)?
+    var isVisible: Bool { panel.isVisible }
     var onApply: (() -> Void)?
     var onIgnore: ((String) -> Void)?
     var onDismiss: (() -> Void)?
@@ -18,11 +24,13 @@ final class SpellingIndicator {
         panel.hasShadow = true
         panel.isOpaque = false
         panel.backgroundColor = .clear
-        let background = NSVisualEffectView()
-        background.material = .hudWindow
-        background.state = .active
-        background.wantsLayer = true
-        background.layer?.cornerRadius = 12
+        // An opaque semantic surface keeps contrast independent of the editor behind it.
+        let background = NSBox()
+        background.boxType = .custom
+        background.borderWidth = 0
+        background.fillColor = .windowBackgroundColor
+        background.cornerRadius = 12
+        background.contentViewMargins = .zero
         panel.contentView = background
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -42,36 +50,59 @@ final class SpellingIndicator {
         label.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
 
         hint.font = .systemFont(ofSize: 12)
-        hint.textColor = .secondaryLabelColor
+        hint.textColor = .labelColor
         hint.setContentCompressionResistancePriority(.required, for: .vertical)
         stack.addArrangedSubview(hint)
         hint.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
-        let actions = NSStackView()
         actions.orientation = .horizontal
         actions.spacing = 10
-        actions.addArrangedSubview(NSButton(title: "Применить", target: self, action: #selector(apply)))
-        actions.addArrangedSubview(NSButton(title: "Не исправлять это слово", target: self,
-                                            action: #selector(ignoreWord)))
-        actions.addArrangedSubview(NSButton(title: "Закрыть", target: self, action: #selector(dismiss)))
+        let replace = NSButton(title: "Заменить", target: self, action: #selector(apply))
+        replace.bezelStyle = .rounded
+        actions.addArrangedSubview(replace)
+        actions.addArrangedSubview(NSButton(title: "Пропустить", target: self, action: #selector(dismiss)))
         stack.addArrangedSubview(actions)
+        ignoreButton.target = self; ignoreButton.action = #selector(ignoreWord)
+        ignoreButton.bezelStyle = .rounded
+        ignoreButton.font = .systemFont(ofSize: 12)
+        ignoreButton.toolTip = "Добавить слово в исключения моего словаря"
+        stack.addArrangedSubview(ignoreButton)
+        undoButton.target = self; undoButton.action = #selector(undoIgnore)
+        undoButton.isHidden = true
+        stack.addArrangedSubview(undoButton)
     }
 
-    func show(word: String, suggestion: String) {
+    func show(word: String, suggestion: String, screen: NSScreen? = nil) {
+        dismissal?.cancel()
         self.word = word
-        let instruction = Preferences.shared.shiftLayoutOnly ? "Кнопка «Применить» — до следующего ввода." : "Двойной Shift — применить до следующего ввода."
-        hint.stringValue = instruction + " Esc — закрыть. При смене поля замена отменяется."
-        label.stringValue = "Возможная опечатка: \(word) → \(suggestion)"
-        panel.contentView?.layoutSubtreeIfNeeded()
-        panel.setContentSize(NSSize(width: 420, height: max(144, stack.fittingSize.height + 28)))
-        let screen = NSScreen.main
-        if let frame = screen?.visibleFrame {
+        actions.isHidden = false; ignoreButton.isHidden = false; undoButton.isHidden = true
+        hint.stringValue = Preferences.shared.shiftLayoutOnly
+            ? "Заменить можно до следующего ввода. Esc — пропустить."
+            : "Двойной Shift — заменить. Esc — пропустить."
+        label.stringValue = "\(word) → \(suggestion)"
+        layout(screen: screen)
+        announce(label.stringValue + ". " + hint.stringValue)
+    }
+
+    private func layout(screen: NSScreen? = nil) {
+        resizeToContent()
+        if let frame = (screen ?? NSScreen.main)?.visibleFrame {
             panel.setFrameOrigin(NSPoint(x: frame.maxX - panel.frame.width - 18,
                                          y: frame.maxY - panel.frame.height - 18))
         }
         panel.orderFrontRegardless()
+    }
+
+    private func resizeToContent() {
+        let top = panel.frame.maxY
+        panel.contentView?.layoutSubtreeIfNeeded()
+        panel.setContentSize(NSSize(width: 420, height: max(144, stack.fittingSize.height + 28)))
+        panel.setFrameOrigin(NSPoint(x: panel.frame.minX, y: top - panel.frame.height))
+        panel.contentView?.layoutSubtreeIfNeeded()
+    }
+
+    private func announce(_ message: String) {
         NSAccessibility.post(element: panel, notification: .announcementRequested,
-                             userInfo: [.announcement: label.stringValue + ". " +
-                                        hint.stringValue,
+                             userInfo: [.announcement: message,
                                         .priority: NSAccessibilityPriorityLevel.medium.rawValue])
     }
 
@@ -83,16 +114,41 @@ final class SpellingIndicator {
     }
 
     func hide() {
+        dismissal?.cancel(); dismissal = nil
         panel.orderOut(nil)
         word = ""
         label.stringValue = ""
     }
 
-    @objc private func apply() { onApply?(); hide() }
+    @objc private func apply() { onApply?() }
+
+    func showResult(applied: Bool) {
+        label.stringValue = applied ? "Слово заменено" : "Не удалось подтвердить замену"
+        hint.stringValue = applied ? "Продолжайте печатать." : "Проверьте текст. Если слово не исправлено, повторите ввод или используйте ручную замену."
+        actions.isHidden = true; ignoreButton.isHidden = true; undoButton.isHidden = true
+        resizeToContent()
+        announce(label.stringValue + ". " + hint.stringValue)
+        let work = DispatchWorkItem { [weak self] in self?.hide() }
+        dismissal?.cancel(); dismissal = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + (applied ? 2 : 6), execute: work)
+    }
 
     @objc private func ignoreWord() {
         onIgnore?(word)
-        hide()
+        label.stringValue = "«\(word)» добавлено в исключения"
+        hint.stringValue = "KeySwitch больше не предлагает исправлять это слово."
+        actions.isHidden = true; ignoreButton.isHidden = true; undoButton.isHidden = false
+        resizeToContent()
+        announce(label.stringValue + ". Можно отменить исключение.")
+    }
+
+    @objc private func undoIgnore() {
+        onUndoIgnore?(word)
+        label.stringValue = "Исключение отменено"
+        hint.stringValue = "Слово снова проверяется при следующем вводе."
+        undoButton.isHidden = true
+        resizeToContent()
+        announce(label.stringValue + ". " + hint.stringValue)
     }
 
     @objc private func dismiss() {

@@ -13,6 +13,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var applicationExclusionItem: NSMenuItem?
     private var lastExternalApplication: NSRunningApplication?
     private var permissionTimer: Timer?
+    private var suggestionTimer: Timer?
+    private var undoIgnoredWord: String?
     private var displayedLanguage: Language = .english
     private var lastPermissionState = false
     private var lastMonitorRunning = false
@@ -70,7 +72,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.animateStatusIcon(to: language)
         }
         spellingIndicator.onApply = { [weak self] in _ = self?.monitor.acceptSuggestion() }
-        spellingIndicator.onIgnore = { [weak self] word in self?.monitor.ignoreSuggestion(word: word) }
+        spellingIndicator.onIgnore = { [weak self] word in
+            guard let self else { return }
+            let key = word.lowercased()
+            self.undoIgnoredWord = self.preferences.ignoredWords.contains(key) ? nil : key
+            self.monitor.ignoreSuggestion(word: word)
+        }
+        spellingIndicator.onUndoIgnore = { [weak self] word in
+            guard let self, self.undoIgnoredWord == word.lowercased() else { return }
+            self.preferences.ignoredWords.remove(word.lowercased())
+            self.undoIgnoredWord = nil
+        }
         spellingIndicator.onDismiss = { [weak self] in self?.monitor.dismissSuggestion() }
         monitor.isInteractingWithMenu = { [weak self] in self?.statusMenuOpen ?? false }
         monitor.preservesFeedbackAtPoint = { [weak self] point in
@@ -80,10 +92,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let screenPoint = NSPoint(x: point.x, y: (NSScreen.screens.first?.frame.maxY ?? 0) - point.y)
             return window.convertToScreen(button.convert(button.bounds, to: nil)).contains(screenPoint)
         }
-        monitor.onFeedbackInvalidated = { [weak self] in self?.spellingIndicator.hide() }
-        monitor.onSpellingIssue = { [weak self] word, suggestion in
-            self?.spellingIndicator.show(word: word, suggestion: suggestion)
+        monitor.isFeedbackVisible = { [weak self] in self?.spellingIndicator.isVisible ?? false }
+        monitor.onSuggestionResult = { [weak self] in self?.spellingIndicator.showResult(applied: $0) }
+        monitor.onFeedbackInvalidated = { [weak self] in
+            self?.spellingIndicator.hide()
+            self?.undoIgnoredWord = nil
         }
+        monitor.onSpellingIssue = { [weak self] word, suggestion in
+            self?.spellingIndicator.show(word: word, suggestion: suggestion, screen: TextInputContext.current()?.screen)
+        }
+        // Programmatic focus changes do not always generate an input event.
+        suggestionTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+            _ = self?.monitor.validatePendingSuggestion()
+        }
+        if let suggestionTimer { RunLoop.main.add(suggestionTimer, forMode: .common) }
         preferences.defaults.set(Date(), forKey: "lastLaunchDate")
         lastPermissionState = monitor.isTrusted
         if monitor.isTrusted {

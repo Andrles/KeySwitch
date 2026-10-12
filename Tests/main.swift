@@ -221,6 +221,25 @@ for word in ["helo", "adress", "teh", "превет", "малако", "Alexandr"
 for (input, expected) in [("recieve", "receive"), ("Recieve", "Receive"), ("RECIEVE", "RECEIVE"), ("пожалуйсто", "пожалуйста"), ("Пожалуйсто", "Пожалуйста"), ("ПОЖАЛУЙСТО", "ПОЖАЛУЙСТА"), ("[recieve]", "[receive]"), ("\"recieve\"", "\"receive\""), ("'recieve'", "'receive'"), ("recieve...", "receive...")] {
     expect(engine.spellingCorrection(for: input, automatic: true)?.replacement, expected, "Safe spelling and punctuation \(input)")
 }
+// A platform dictionary can rank "пресет" first. The greeting preference is
+// suggestion-only, preserves wrappers/case, and still protects acronyms.
+for (input, expected) in [("превет", "привет"), ("Превет", "Привет"),
+                          ("(превет)", "(привет)"), ("[Превет]", "[Привет]"),
+                          ("превет...", "привет...")] {
+    expect(engine.spellingCorrection(for: input, automatic: false)?.replacement, expected, "Preferred greeting hint \(input)")
+    guard engine.spellingCorrection(for: input, automatic: true) == nil else {
+        fputs("FAIL Greeting hint auto-applied: \(input)\n", stderr); exit(1)
+    }
+}
+for word in ["ПРЕВЕТ", "преВет", "пресет"] {
+    guard engine.spellingCorrection(for: word, automatic: true) == nil else {
+        fputs("FAIL Protected spelling changed: \(word)\n", stderr); exit(1)
+    }
+}
+guard engine.spellingSuggestion(for: "ПРЕВЕТ", language: .russian) == nil,
+      engine.spellingSuggestion(for: "преВет", language: .russian) == nil else {
+    fputs("FAIL Protected hint case changed\n", stderr); exit(1)
+}
 if ProcessInfo.processInfo.environment["KEYSWITCH_DISABLE_SYSTEM_DICTIONARY"] == "0" {
     guard SystemDictionary.shared.contains("hello", language: .english), SystemDictionary.shared.contains("мир", language: .russian) else {
         fputs("FAIL System dictionary service unavailable\n", stderr); exit(1)
@@ -341,3 +360,56 @@ assert(importedPhrases.snippets == ["sig": "С уважением, Алексе�
 do { _ = try phrases.merging(DictionarySnapshot(words: [], replacements: [:], ignored: [], snippets: ["SIG": "One", "sig": "Two"])); assertionFailure("Case collision must throw") } catch { }
 featureDefaults.removePersistentDomain(forName: featureSuite)
 print("Application profiles / snippet policy / transfer regressions: OK")
+
+// Exercise the editing transaction with editor responses, including partial failures.
+final class SuffixEditorFixture: SuffixEditingBackend {
+    var value: String
+    var range: NSRange
+    var canReplace = true
+    var contextIsCurrent = true
+    var rejectWrite = false
+    var transformWrite: ((String) -> String)?
+    var afterSelect: (() -> Void)?
+    var writes = 0
+    init(_ value: String) { self.value = value; range = NSRange(location: value.utf16.count, length: 0) }
+    func selection() -> NSRange? { range }
+    func text(in range: NSRange) -> String? {
+        let string = value as NSString
+        guard range.location >= 0, range.length >= 0, NSMaxRange(range) <= string.length else { return nil }
+        return string.substring(with: range)
+    }
+    func select(_ range: NSRange) -> Bool {
+        self.range = range; afterSelect?(); return true
+    }
+    func replaceSelection(with text: String) -> Bool {
+        guard !rejectWrite else { return false }
+        writes += 1
+        let inserted = transformWrite?(text) ?? text
+        value = (value as NSString).replacingCharacters(in: range, with: inserted)
+        range.length = inserted.utf16.count
+        return true
+    }
+}
+func suffixRequire(_ condition: @autoclosure () -> Bool, _ label: String) {
+    if !condition() { fputs("SuffixReplacement FAIL: \(label)\n", stderr); exit(1) }
+}
+for (original, replacement) in [("превет ", "привет "), ("recieve ", "receive "),
+                                ("Превет ", "Привет "), ("😀 превет ", "😀 привет "),
+                                ("ошибк ", "ошибка ")] {
+    let editor = SuffixEditorFixture("Начало: " + original)
+    let suffix = VerifiedTextSuffix(text: original, caret: editor.range.location)
+    suffixRequire(SuffixReplacement.apply(suffix, replacement: replacement, using: editor) == .applied, "successful exact replacement")
+    suffixRequire(editor.value == "Начало: " + replacement && editor.range == NSRange(location: editor.value.utf16.count, length: 0), "prefix, UTF16 and caret preserved")
+}
+let unsupportedEditor = SuffixEditorFixture("превет "); unsupportedEditor.canReplace = false
+suffixRequire(SuffixReplacement.apply(VerifiedTextSuffix(text: "превет ", caret: 7), replacement: "привет ", using: unsupportedEditor) == .unsupported && unsupportedEditor.writes == 0 && unsupportedEditor.range.length == 0, "unsupported field untouched")
+let staleEditor = SuffixEditorFixture("другой ")
+suffixRequire(SuffixReplacement.apply(VerifiedTextSuffix(text: "превет ", caret: 7), replacement: "привет ", using: staleEditor) == .contextChanged && staleEditor.writes == 0, "changed text untouched")
+let changedFocusEditor = SuffixEditorFixture("превет ")
+changedFocusEditor.afterSelect = { changedFocusEditor.contextIsCurrent = false }
+suffixRequire(SuffixReplacement.apply(VerifiedTextSuffix(text: "превет ", caret: 7), replacement: "привет ", using: changedFocusEditor) == .contextChanged && changedFocusEditor.writes == 0, "focus change prevents write")
+let rejectedEditor = SuffixEditorFixture("превет "); rejectedEditor.rejectWrite = true
+suffixRequire(SuffixReplacement.apply(VerifiedTextSuffix(text: "превет ", caret: 7), replacement: "привет ", using: rejectedEditor) == .failed && rejectedEditor.value == "превет " && rejectedEditor.range == NSRange(location: 7, length: 0), "failed write preserves text and restores caret")
+let corruptedEditor = SuffixEditorFixture("превет "); corruptedEditor.transformWrite = { _ in "пресет " }
+suffixRequire(SuffixReplacement.apply(VerifiedTextSuffix(text: "превет ", caret: 7), replacement: "привет ", using: corruptedEditor) == .unverified, "unexpected result never reports success")
+print("Verified suffix replacement regressions: OK")

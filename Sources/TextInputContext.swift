@@ -42,22 +42,46 @@ struct TextInputContext {
             && inputSourceID == other.inputSourceID
     }
 
+    var screen: NSScreen? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &value) == .success,
+              let value, CFGetTypeID(value) == AXValueGetTypeID() else { return nil }
+        var position = CGPoint.zero
+        guard AXValueGetValue(value as! AXValue, .cgPoint, &position) else { return nil }
+        var sizeValue: CFTypeRef?
+        var size = CGSize.zero
+        if AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &sizeValue) == .success,
+           let sizeValue, CFGetTypeID(sizeValue) == AXValueGetTypeID() {
+            _ = AXValueGetValue(sizeValue as! AXValue, .cgSize, &size)
+        }
+        // AX uses a top-left origin on the primary display; AppKit uses bottom-left.
+        let point = NSPoint(x: position.x + size.width / 2,
+                            y: (NSScreen.screens.first?.frame.maxY ?? 0) - position.y - size.height / 2)
+        return NSScreen.screens.first { $0.frame.contains(point) }
+    }
+
     func verifies(_ suffix: VerifiedTextSuffix) -> Bool {
         guard let range = suffix.range else { return false }
+        return suffix.matches(selection: selection, actual: text(in: range))
+    }
+
+    func text(in range: NSRange) -> String? {
+        guard range.location >= 0, range.length >= 0, range.length <= 4096,
+              range.location <= Int.max - range.length else { return nil }
         var cfRange = CFRange(location: range.location, length: range.length)
-        guard let rangeValue = AXValueCreate(.cfRange, &cfRange) else { return false }
+        guard let rangeValue = AXValueCreate(.cfRange, &cfRange) else { return nil }
         var value: CFTypeRef?
         let result = AXUIElementCopyParameterizedAttributeValue(
             element, kAXStringForRangeParameterizedAttribute as CFString, rangeValue, &value)
         if result == .success {
-            return suffix.matches(selection: selection, actual: value as? String)
+            return value as? String
         }
         // Text fields may expose AXValue but no AXStringForRange. Never retain
         // the returned document; inspect only a bounded value during preflight.
         guard AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &value) == .success,
-              let string = value as? String else { return false }
+              let string = value as? String else { return nil }
         let text = string as NSString
-        guard text.length <= 100_000, NSMaxRange(range) <= text.length else { return false }
-        return suffix.matches(selection: selection, actual: text.substring(with: range))
+        guard text.length <= 100_000, NSMaxRange(range) <= text.length else { return nil }
+        return text.substring(with: range)
     }
 }

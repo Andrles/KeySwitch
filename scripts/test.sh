@@ -11,6 +11,7 @@ xcrun swiftc \
   -sdk "$sdk_path" \
   -framework AppKit \
   "$project_dir/Sources/MonitorState.swift" \
+  "$project_dir/Sources/SuffixReplacement.swift" \
   "$project_dir/Sources/SystemDictionary.swift" \
   "$project_dir/Sources/LocalLexicon.swift" "$project_dir/Sources/LanguageEngine.swift" \
   "$project_dir/Sources/KeyboardTokenClassifier.swift" \

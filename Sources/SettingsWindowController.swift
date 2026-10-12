@@ -427,7 +427,7 @@ final class SettingsWindowController: NSWindowController,
         testResultLabel = result
         practice.stack.addArrangedSubview(result)
         stack.addArrangedSubview(practice.view)
-        stack.addArrangedSubview(verticalLabels(title: "Дважды нажмите Shift", subtitle: preferences.shiftLayoutOnly ? "Сменить язык текущего слова." : "Сменить язык текущего слова. Если есть подсказка — применить её. Сразу после автоисправления — отменить замену."))
+        stack.addArrangedSubview(verticalLabels(title: "Дважды нажмите Shift", subtitle: preferences.shiftLayoutOnly ? "Сменить язык текущего слова." : "Сменить язык текущего слова. Если есть подсказка — применить её. Сразу после исправления — отменить замену."))
         stack.addArrangedSubview(settingRow(title: "Звук при исправлении", subtitle: "Короткий сигнал после замены слова", state: preferences.playSound, action: #selector(toggleSound(_:))))
         return view
     }
@@ -477,7 +477,7 @@ final class SettingsWindowController: NSWindowController,
         case .off:
             return "KeySwitch меняет только раскладку. Опечатки остаются как есть."
         case .suggestions:
-            return "Появится подсказка с кнопками «Применить» и «Закрыть». Замена доступна до следующего ввода в том же поле."
+            return "Появится подсказка: «Заменить» исправит слово, «Пропустить» оставит его как есть. Замена доступна до следующего ввода в том же поле."
         case .autoCorrect:
             return "Проверенные опечатки исправляются сразу. Для остальных появится подсказка. Подсказку можно применить кнопкой. Отмена доступна в меню ручных действий."
         }

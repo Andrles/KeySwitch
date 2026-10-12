@@ -7,7 +7,7 @@ enum ManualCommand: Int, CaseIterable {
         switch self {
         case .layout: return "Сменить раскладку слова или выделения"
         case .accept: return "Применить подсказку"
-        case .undo: return "Отменить последнее автоисправление"
+        case .undo: return "Отменить последнее исправление"
         case .uppercase: return "Выделение → ПРОПИСНЫЕ"
         case .lowercase: return "Выделение → строчные"
         }

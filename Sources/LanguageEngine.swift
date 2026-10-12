@@ -335,6 +335,11 @@ struct LanguageEngine {
               !TextToken.hasProtectedCase(word),
               !vocabulary.contains(normalized), !names.contains(normalized),
               !systemDictionary.contains(word, language: language) else { return nil }
+        // macOS may rank the valid word "пресет" ahead of the intended greeting.
+        // Prefer this common typo only in suggestions; never auto-apply it.
+        if language == .russian, normalized == "превет" {
+            return TextToken.applyingCase(of: word, to: "привет")
+        }
         // A name-like typo may be suggested, but ordinary lowercase words must
         // never be silently promoted to names.
         let name = word.first?.isUppercase == true ? normalizedName(word, language: language) : word

@@ -55,6 +55,8 @@ final class Preferences {
             if CommandLine.arguments.contains("--runtime-check") {
                 preferences.automaticallyChecksForUpdates = false
                 preferences.playSound = false
+                preferences.spellingMode = .suggestions
+                preferences.shiftLayoutOnly = false
                 preferences.excludedApps = []
                 preferences.snippetsEnabled = true
                 preferences.snippets = ["spas": "Спасибо, хорошего дня!", "sig": "Best regards, Алексей 🙂"]

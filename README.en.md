@@ -1,7 +1,7 @@
 <div align="center">
   <img src="docs/assets/banner.svg" alt="KeySwitch — automatic keyboard layout switching for macOS" width="100%">
 
-  [![Version](https://img.shields.io/badge/version-3.2.0-6D5DFB)](CHANGELOG.md)
+  [![Version](https://img.shields.io/badge/version-3.3.2-6D5DFB)](CHANGELOG.md)
   [![Downloads](https://img.shields.io/github/downloads/Andrles/KeySwitch/total?label=downloads&logo=github&color=2563EB)](https://github.com/Andrles/KeySwitch/releases)
 
   **A native Russian ↔ English keyboard layout assistant for macOS.**
@@ -119,7 +119,7 @@ Closing the window keeps the app running. Quit through the KeySwitch menu.
 
 ### Safer corrections in 3.1.1
 
-Correct vocabulary, known names, technical terms and identifiers are protected before conversion. Layout conversion preserves letters and case. Automatic spelling uses curated common typo rules; ambiguous dictionary guesses remain suggestions accepted with double Shift. Quotes/brackets are preserved and Tab completes a word. Address/path/code separators are conservative. Mixed identifiers, language collisions and unsupported foreign characters may require manual conversion. The primary supported layout pair is English QWERTY / Russian ЙЦУКЕН.
+Correct vocabulary, known names, technical terms and identifiers are protected before conversion. Layout conversion preserves letters and case. Automatic spelling uses curated common typo rules; ambiguous dictionary guesses remain suggestions accepted with double Shift. Quotes/brackets are preserved. Tab dismisses the current suggestion without replacing the word. Address/path/code separators are conservative. Mixed identifiers, language collisions and unsupported foreign characters may require manual conversion. The primary supported layout pair is English QWERTY / Russian ЙЦУКЕН.
 
 ## Manual actions and personal dictionary (3.2.1)
 
@@ -140,3 +140,11 @@ Select an application in the exclusions section to independently control automat
 Add an “Abbreviation → phrase” rule in the personal dictionary, save it and enable expansion after Space. Triggers contain one word up to 64 characters; phrases contain one line up to 256 characters and 512 UTF-16 units. Enter, Tab and punctuation do not expand snippets. Expansion preserves the input source. Ignored words take precedence. Snippets are included in dictionary transfer; this version reads legacy files.
 
 Undo uses the existing verified-field guard and expires after new input, a context change or 15 seconds. Use the manual undo command when double Shift is configured for layout only. Physical TextEdit expansion, trigger restoration and selected-text layout conversion were confirmed. Local PKG/ZIP payloads and startup were verified; full installation and publication remain pending.
+
+## Suggestions and verified edits (3.3.2)
+
+“Заменить” applies a suggestion; “Пропустить” keeps the current word. The separate ignore action saves a persistent exception and offers immediate undo. Escape dismisses active feedback; Tab dismisses it and reaches the editor.
+
+Accepted suggestions and undo use guarded Accessibility text replacement with readback verification. Unsupported editors receive a failure message. Automatic boundary corrections retain their existing keyboard-event implementation.
+
+Physical TextEdit checks confirmed the button, initial capitalization, and double-Shift apply/undo with layout-only mode disabled. PKG/ZIP contents, startup and isolated installer scenarios passed; a full 3.3.2 upgrade on the working Mac is not yet verified. The app uses ad-hoc signing; the package is unsigned and not notarized. [Verification and limitations](POPUP_IMPROVEMENTS_2026-10-12.md).

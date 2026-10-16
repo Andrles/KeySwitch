@@ -9,7 +9,8 @@ export SWIFT_MODULE_CACHE_PATH="$project_dir/build/module-cache-keyswitch"
 export KEYSWITCH_DISABLE_SYSTEM_DICTIONARY="${KEYSWITCH_DISABLE_SYSTEM_DICTIONARY:-1}"
 xcrun swiftc \
   -sdk "$sdk_path" \
-  -framework AppKit \
+  -framework AppKit -framework Carbon \
+  "$project_dir/Sources/InputSourceController.swift" \
   "$project_dir/Sources/MonitorState.swift" \
   "$project_dir/Sources/SuffixReplacement.swift" \
   "$project_dir/Sources/SystemDictionary.swift" \

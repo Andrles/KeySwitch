@@ -404,7 +404,7 @@ final class KeyboardMonitor {
             let updated = NSRange(location: range.location, length: edit.replacement.utf16.count)
             popupDiagnostic("readback=\(testToken(context.text(in: updated) ?? ""))")
         }
-        if !edit.preserveInputSource { InputSourceController.select(language: language) }
+        if !edit.preserveInputSource { selectInputLanguage(language) }
         recordCorrection(correction, context: context, boundary: "", oldLanguage: oldLanguage,
                          keepUndo: keepUndo, canUndo: true, preserveInputSource: edit.preserveInputSource)
         currentWord = ""
@@ -453,10 +453,19 @@ final class KeyboardMonitor {
             event.setIntegerValueField(.eventSourceUserData, value: injectedMarker)
             event.postToPid(context.processID)
         }
-        if !preserveInputSource { InputSourceController.select(language: correction.language) }
+        if !preserveInputSource { selectInputLanguage(correction.language) }
         recordCorrection(correction, context: context, boundary: boundary, oldLanguage: oldLanguage,
                          keepUndo: keepUndo, canUndo: canUndo, preserveInputSource: preserveInputSource)
         return true
+    }
+
+    private func selectInputLanguage(_ language: Language) {
+        guard !InputSourceController.select(language: language).succeeded else { return }
+        // The text has already changed. Keep its undo record and do not replay
+        // the replacement or separator after an input-source failure.
+        DispatchQueue.main.async {
+            ManualFeedback.shared.show(ManualEditResult.inputSourceUnchanged.message)
+        }
     }
 
     private func recordCorrection(_ correction: Correction, context: TextInputContext,
@@ -481,7 +490,10 @@ final class KeyboardMonitor {
                 expires: ProcessInfo.processInfo.systemUptime + 15)
         }
         if preferences.playSound && keepUndo { NSSound.beep() }
-        DispatchQueue.main.async { [weak self] in self?.onCorrection?(correction.language) }
+        let actualLanguage = InputSourceController.currentLanguage()
+        DispatchQueue.main.async { [weak self] in
+            if let actualLanguage { self?.onCorrection?(actualLanguage) }
+        }
     }
 
     // Diagnostics classify only three supplied test words, never log arbitrary input.

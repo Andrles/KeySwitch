@@ -162,7 +162,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         exclusion.target = self
         applicationExclusionItem = exclusion
         menu.addItem(exclusion)
-        let manual = NSMenuItem(title: "Ручные действия", action: nil, keyEquivalent: "")
+        let manual = NSMenuItem(title: "Горячие клавиши", action: nil, keyEquivalent: "")
         let actions = NSMenu()
         for command in ManualCommand.allCases {
             let item = NSMenuItem(title: command.title, action: #selector(manualAction(_:)), keyEquivalent: "")
@@ -186,7 +186,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         hide.target = self
         hide.image = menuSymbol("menubar.rectangle")
         menu.addItem(hide)
-        let permission = NSMenuItem(title: "Разрешения macOS…",
+        let permission = NSMenuItem(title: "Доступ macOS…",
                                     action: #selector(checkPermission),
                                     keyEquivalent: "")
         permission.target = self

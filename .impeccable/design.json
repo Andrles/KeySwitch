@@ -1,0 +1,201 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-16T20:55:10.187638+00:00",
+  "title": "Design System: KeySwitch",
+  "extensions": {
+    "platform": {
+      "name": "macOS AppKit",
+      "units": "points",
+      "sourceFiles": [
+        "Sources/MaterialSurface.swift",
+        "Sources/SettingsWindowController.swift",
+        "Sources/SpellingIndicator.swift"
+      ],
+      "previewSupport": "Native materials and controls require AppKit; no HTML/CSS surrogate is supplied."
+    },
+    "nativeColors": {
+      "accent": {
+        "api": "NSColor.controlAccentColor",
+        "role": "primary"
+      },
+      "primaryText": {
+        "api": "NSColor.labelColor",
+        "role": "neutral"
+      },
+      "secondaryText": {
+        "api": "NSColor.secondaryLabelColor",
+        "role": "neutral"
+      },
+      "groupTint": {
+        "api": "NSColor.controlBackgroundColor",
+        "alpha": 0.35,
+        "role": "neutral"
+      },
+      "opaqueGroup": {
+        "api": "NSColor.controlBackgroundColor",
+        "role": "neutral"
+      },
+      "opaqueSurface": {
+        "api": "NSColor.windowBackgroundColor",
+        "role": "neutral"
+      },
+      "contrastBorder": {
+        "api": "NSColor.separatorColor",
+        "role": "neutral"
+      },
+      "sidebarSelection": {
+        "api": "NSColor.controlAccentColor",
+        "alpha": 0.16,
+        "role": "primary"
+      }
+    },
+    "nativeMaterials": {
+      "window": {
+        "material": "underWindowBackground",
+        "blendingMode": "behindWindow",
+        "state": "active"
+      },
+      "sidebar": {
+        "material": "sidebar",
+        "blendingMode": "withinWindow",
+        "state": "active"
+      },
+      "group": {
+        "configuredMaterial": "contentBackground",
+        "blendingMode": "withinWindow",
+        "effectHidden": true,
+        "appearance": "shared window material plus groupTint"
+      },
+      "popover": {
+        "material": "popover",
+        "blendingMode": "behindWindow",
+        "state": "active"
+      },
+      "accessibilityFallback": {
+        "when": [
+          "reduceTransparency",
+          "increaseContrast"
+        ],
+        "effectHidden": true,
+        "groupColor": "opaqueGroup",
+        "otherRoleColor": "opaqueSurface",
+        "increaseContrastBorderWidth": 1,
+        "refreshOn": [
+          "accessibilityDisplayOptionsDidChangeNotification",
+          "viewDidChangeEffectiveAppearance"
+        ]
+      }
+    },
+    "nativeElevation": {
+      "groups": "none",
+      "suggestion": "NSPanel.hasShadow = true; system-owned geometry"
+    },
+    "nativeLayout": {
+      "windowMinimum": {
+        "width": 760,
+        "height": 560
+      },
+      "titleRegion": 28,
+      "suggestionMinimumHeight": 132,
+      "suggestionScreenInset": 18,
+      "suggestionHeight": "max(132, stack.fittingSize.height + 28)",
+      "suggestionAnchor": "visible screen top-right",
+      "sidebarSelectionInset": 2
+    },
+    "nativeComponents": [
+      {
+        "name": "Material group",
+        "class": "MaterialSurface",
+        "role": "group",
+        "refersTo": "material-group",
+        "behavior": "Content-driven height; shared group tint; opaque accessibility fallback."
+      },
+      {
+        "name": "Settings navigation",
+        "class": "SidebarButton",
+        "refersTo": "settings-sidebar",
+        "behavior": "SF Symbol and primary text; accent selection tint; regular/semibold system font."
+      },
+      {
+        "name": "Binary setting",
+        "class": "NSSwitch",
+        "behavior": "Regular control size; visible row label and accessibility label; native focus and disabled behavior."
+      },
+      {
+        "name": "Action button",
+        "class": "NSButton",
+        "behavior": "Native rounded bezel where configured; system interaction states."
+      },
+      {
+        "name": "Local example",
+        "class": "NSTextField",
+        "behavior": "Initial ghbdtn value, explicit correction action and local-only result."
+      },
+      {
+        "name": "Mode selection",
+        "class": "NSSegmentedControl",
+        "behavior": "Equal-width native segments; selected mode caption updates without replacing control."
+      },
+      {
+        "name": "Spelling suggestion",
+        "class": "NSPanel",
+        "refersTo": "spelling-suggestion",
+        "behavior": "Floating nonactivating panel; replace, skip, ignore; wrapping text and vertical growth; accessibility announcements."
+      }
+    ]
+  },
+  "components": [],
+  "narrative": {
+    "northStar": "A quiet language key",
+    "overview": "KeySwitch is a lightweight native macOS RU/EN utility. Its approved direction is light, modern and simple enough for a beginner: SF system typography, SF Symbols, the user's macOS accent and dynamic neutral materials. The A/Я language-key identity with its integrated switching symbol belongs to KeySwitch; the Caramba reference informs lighter surfaces and simpler wording without replacing that identity.\n\nThis is an AppKit settings window, not a marketing page. Transparency belongs to real system materials behind fully legible content. System, light and dark appearance apply to the whole window. The former purple gradient and glossy identity are replaced by restrained native surfaces. Existing design dials remain DESIGN_VARIANCE 3, MOTION_INTENSITY 2 and VISUAL_DENSITY 3; these are direction metadata, not runtime animation tokens.",
+    "keyCharacteristics": [
+      "Native controls, SF typography and SF Symbols.",
+      "Shared translucent surfaces with opaque accessibility fallbacks.",
+      "Short Russian outcome labels and visible current state.",
+      "A compact suggestion with explicit replace, skip and ignore actions."
+    ],
+    "rules": [
+      {
+        "name": "The System Color Rule",
+        "body": "Resolve semantic colors in the effective appearance; never freeze them to screenshot-derived hex values.",
+        "section": "colors"
+      },
+      {
+        "name": "The Meaningful Status Rule",
+        "body": "Reserve warning and success semantics for actual status. Section symbols stay neutral; color is never the only state signal.",
+        "section": "colors"
+      },
+      {
+        "name": "The Plain Label Rule",
+        "body": "Name outcomes in short familiar Russian: “Раскладка”, “Опечатки”, “Мой словарь”, “Горячие клавиши”, “Исключения”, “Доступ macOS”, “Вид и запуск”, “О приложении”. Avoid monitoring/engine jargon, decorative metrics and repeated feature summaries.",
+        "section": "typography"
+      },
+      {
+        "name": "The Shared Material Rule",
+        "body": "Use one shared window backdrop and tinted groups; do not layer an independent blur inside every group.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Opaque Accessibility Rule",
+        "body": "Reduce Transparency or Increase Contrast hides material effects and removes the translucent group tint. Use opaque semantic fallback colors; Increase Contrast also adds the separator border. Refresh on accessibility-display changes and effective-appearance changes. Content remains fully opaque.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** use dynamic AppKit colors, real native materials and SF system typography.",
+      "**Do** preserve opaque Reduce Transparency and Increase Contrast fallbacks.",
+      "**Do** keep the first settings view focused on current state, its switch and the local example.",
+      "**Do** let supporting text and suggestions wrap and grow vertically.",
+      "**Do** keep permission, invalid-draft, disabled and replacement-result states explicit.",
+      "**Do** preserve KeySwitch's A/Я identity and its native menu-bar state symbols."
+    ],
+    "donts": [
+      "**Don't** convert semantic NSColor values into fixed screenshot colors or fake CSS materials.",
+      "**Don't** stack independent blur layers inside groups or add group shadows.",
+      "**Don't** fade content to make a surface look translucent.",
+      "**Don't** restore the superseded purple gradient and glossy identity.",
+      "**Don't** imply that the safe local example verifies external editor compatibility.",
+      "**Don't** change product logic, permission boundaries or keyboard navigation as a styling shortcut."
+    ]
+  }
+}

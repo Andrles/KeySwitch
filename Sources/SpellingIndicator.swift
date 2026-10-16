@@ -8,7 +8,7 @@ final class SpellingIndicator {
     private var word = ""
     private var dismissal: DispatchWorkItem?
     private let actions = NSStackView()
-    private let ignoreButton = NSButton(title: "Больше не предлагать это слово", target: nil, action: nil)
+    private let ignoreButton = NSButton(title: "Не предлагать", target: nil, action: nil)
     private let undoButton = NSButton(title: "Отменить исключение", target: nil, action: nil)
     var onUndoIgnore: ((String) -> Void)?
     var isVisible: Bool { panel.isVisible }
@@ -17,24 +17,18 @@ final class SpellingIndicator {
     var onDismiss: (() -> Void)?
 
     init() {
-        panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 420, height: 144),
+        panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 380, height: 132),
                         styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.hasShadow = true
         panel.isOpaque = false
         panel.backgroundColor = .clear
-        // An opaque semantic surface keeps contrast independent of the editor behind it.
-        let background = NSBox()
-        background.boxType = .custom
-        background.borderWidth = 0
-        background.fillColor = .windowBackgroundColor
-        background.cornerRadius = 12
-        background.contentViewMargins = .zero
+        let background = MaterialSurface(role: .popover)
         panel.contentView = background
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 10
+        stack.spacing = 8
         stack.translatesAutoresizingMaskIntoConstraints = false
         background.addSubview(stack)
         NSLayoutConstraint.activate([
@@ -43,7 +37,7 @@ final class SpellingIndicator {
             stack.topAnchor.constraint(equalTo: background.topAnchor, constant: 14),
             stack.bottomAnchor.constraint(lessThanOrEqualTo: background.bottomAnchor, constant: -14)
         ])
-        label.font = .systemFont(ofSize: 14, weight: .medium)
+        label.font = .systemFont(ofSize: 16, weight: .semibold)
         label.textColor = .labelColor
         label.setContentCompressionResistancePriority(.required, for: .vertical)
         stack.addArrangedSubview(label)
@@ -58,14 +52,17 @@ final class SpellingIndicator {
         actions.spacing = 10
         let replace = NSButton(title: "Заменить", target: self, action: #selector(apply))
         replace.bezelStyle = .rounded
+        replace.keyEquivalent = ""
         actions.addArrangedSubview(replace)
         actions.addArrangedSubview(NSButton(title: "Пропустить", target: self, action: #selector(dismiss)))
         stack.addArrangedSubview(actions)
         ignoreButton.target = self; ignoreButton.action = #selector(ignoreWord)
         ignoreButton.bezelStyle = .rounded
         ignoreButton.font = .systemFont(ofSize: 12)
-        ignoreButton.toolTip = "Добавить слово в исключения моего словаря"
-        stack.addArrangedSubview(ignoreButton)
+        ignoreButton.toolTip = "Больше не предлагать исправление этого слова"
+        ignoreButton.setAccessibilityLabel("Больше не предлагать это слово")
+        ignoreButton.isBordered = false
+        actions.addArrangedSubview(ignoreButton)
         undoButton.target = self; undoButton.action = #selector(undoIgnore)
         undoButton.isHidden = true
         stack.addArrangedSubview(undoButton)
@@ -95,7 +92,7 @@ final class SpellingIndicator {
     private func resizeToContent() {
         let top = panel.frame.maxY
         panel.contentView?.layoutSubtreeIfNeeded()
-        panel.setContentSize(NSSize(width: 420, height: max(144, stack.fittingSize.height + 28)))
+        panel.setContentSize(NSSize(width: 380, height: max(132, stack.fittingSize.height + 28)))
         panel.setFrameOrigin(NSPoint(x: panel.frame.minX, y: top - panel.frame.height))
         panel.contentView?.layoutSubtreeIfNeeded()
     }

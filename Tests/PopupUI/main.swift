@@ -12,6 +12,49 @@ final class PopupTestDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         let preferences = Preferences.shared
         require(CommandLine.arguments.contains("--ui-preview"), "isolated preferences required")
+        var reducedTransparency = false
+        var increasedContrast = false
+        let surface = MaterialSurface(role: .popover, accessibility: {
+            .init(reduceTransparency: reducedTransparency, increaseContrast: increasedContrast)
+        })
+        for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+            surface.appearance = NSAppearance(named: appearance)
+            for flags in [(false, false), (true, false), (false, true), (false, false)] {
+                reducedTransparency = flags.0; increasedContrast = flags.1
+                surface.refreshMaterial()
+                require(surface.effect.isHidden == (flags.0 || flags.1), "material accessibility fallback")
+                require(surface.layer?.backgroundColor?.alpha == (flags.0 || flags.1 ? 1 : 0), "solid fallback opacity")
+            }
+        }
+        // Exercise all settings pages at their smallest supported size. Vertical
+        // scrolling is intentional; horizontal clipping and dead switches are not.
+        for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+            NSApp.appearance = NSAppearance(named: appearance)
+            for section in 0..<8 {
+                let controller = SettingsWindowController(initialSection: section)
+                let window = controller.window!
+                window.setContentSize(NSSize(width: 760, height: 560))
+                window.orderFront(nil)
+                window.contentView!.layoutSubtreeIfNeeded()
+                let views = descendants(window.contentView!)
+                for view in views where !view.isHiddenOrHasHiddenAncestor &&
+                    (view is NSControl) && view.bounds.width > 0 {
+                    let frame = view.convert(view.bounds, to: window.contentView)
+                    require(frame.minX >= -1 && frame.maxX <= window.contentView!.bounds.width + 1,
+                            "horizontal clipping in settings section \(section): \(frame)")
+                }
+                if section == 0 {
+                    let control = views.compactMap { $0 as? NSSwitch }.first!
+                    let original = preferences.enabled
+                    control.state = original ? .off : .on
+                    require(NSApp.sendAction(control.action!, to: control.target, from: control), "native switch action")
+                    require(preferences.enabled != original, "native switch must update correction preference")
+                    preferences.enabled = original
+                }
+                window.orderOut(nil)
+            }
+        }
+        print("Settings/material regressions: OK (8 pages, light/dark, minimum width, native switch, opaque accessibility fallback)")
         var ignored = "", undone = "", dismissed = false
         indicator.onApply = { self.indicator.showResult(applied: false) }
         indicator.onIgnore = { ignored = $0 }
@@ -34,7 +77,7 @@ final class PopupTestDelegate: NSObject, NSApplicationDelegate {
                 require(indicator.isVisible, "failed replacement must stay visible")
                 require(views.compactMap { $0 as? NSTextField }.contains { $0.stringValue == "Не удалось подтвердить замену" }, "failure text missing")
                 indicator.show(word: pair.0, suggestion: pair.1)
-                views.compactMap { $0 as? NSButton }.first { $0.title == "Больше не предлагать это слово" }!.performClick(nil)
+                views.compactMap { $0 as? NSButton }.first { $0.title == "Не предлагать" }!.performClick(nil)
                 require(ignored == pair.0 && indicator.isVisible, "ignore confirmation")
                 let undo = views.compactMap { $0 as? NSButton }.first { $0.title == "Отменить исключение" }!
                 require(!undo.isHidden, "undo missing")
@@ -74,6 +117,7 @@ final class PopupTestDelegate: NSObject, NSApplicationDelegate {
         print("PopupUI regressions: OK (light/dark, RU/EN long content, failure, ignore/undo, skip, dictionary selection)")
         fflush(stdout)
         if CommandLine.arguments.contains("--interactive") {
+            for window in NSApp.windows where !(window is NSPanel) { window.orderOut(nil) }
             let menu = NSMenu(); let item = NSMenuItem(title: "Тест подсказки", action: nil, keyEquivalent: "")
             let submenu = NSMenu()
             for (title, action) in [("Светлая", #selector(light)), ("Тёмная", #selector(dark)), ("Отказ замены", #selector(failure))] {

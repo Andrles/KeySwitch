@@ -30,7 +30,7 @@ for s in ['hello, world!','привет, мир!','park dark mart aria','При�
 # Tab is a navigation reset in monitor; newline is a correction boundary.
 for sep in [' ','\n','\t','!','?','/','@']:
  # Technical separators may belong to an address/path; conservative policy keeps the token.
- add('stream',wrong('привет','russian')+sep,(wrong('привет','russian') if sep in ['/', '@'] else 'привет')+sep,'russian','boundaries')
+ add('stream',wrong('привет','russian')+sep,(wrong('привет','russian') if sep in ['/', '@', '\t'] else 'привет')+sep,'russian','boundaries')
 for lang,typos in [('english',['helo','Helo','HELO','recieve','Recieve','RECIEVE','adress','Adress','ADRESS','teh','langauge','definately','occured','seperate','accomodate','wierd','quikc','programmng']),('russian',['превет','Превет','ПРЕВЕТ','малако','Малако','МАЛАКО','пожалуйсто','здраствуйте','програмирование','симпотичный','агенство','будующий','сдесь','жыраф','щюка','жы'])]:
  for t in typos: add('probe-spell',t,'',lang,'typo')
 for lang in ['russian','english']:

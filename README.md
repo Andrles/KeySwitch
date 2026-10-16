@@ -7,7 +7,7 @@
 [![macOS 13+](https://img.shields.io/badge/macOS-13%2B-111827?logo=apple)](#системные-требования)
 [![Swift](https://img.shields.io/badge/Swift-native-F05138?logo=swift&logoColor=white)](#сборка-из-исходного-кода)
 [![Local processing](https://img.shields.io/badge/privacy-local_processing-16A34A)](#приватность)
-[![Version](https://img.shields.io/badge/version-3.3.2-6D5DFB)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-3.4.0-6D5DFB)](CHANGELOG.md)
 [![Download](https://img.shields.io/badge/download-latest_release-2563EB?logo=github)](https://github.com/Andrles/KeySwitch/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/Andrles/KeySwitch/total?label=downloads&logo=github&color=2563EB)](https://github.com/Andrles/KeySwitch/releases)
 
@@ -196,3 +196,9 @@ docs/         графика и документация
 Принятые подсказки и отмена записываются через Accessibility после проверки поля, исходного текста и курсора. Успех подтверждается чтением результата. Если редактор не поддерживает этот способ записи, KeySwitch сообщает об отказе. Автоматические исправления на границе слова используют прежний механизм событий.
 
 Подтверждены кнопка, начальная заглавная буква и применение/отмена двойным Shift в TextEdit. PKG/ZIP, запуск и установочные сценарии проверены; полное обновление на рабочем Mac для 3.3.2 ещё не проверено. Подпись локальная ad-hoc, пакет не подписан Developer ID и не нотариализован. [Результаты и ограничения](POPUP_IMPROVEMENTS_2026-10-12.md).
+
+## Обновление 3.4.0
+
+Нативные полупрозрачные окна, компактные подсказки, улучшенное распознавание слов и подтверждение фактической смены языка. Голос, AI и другие платформы остаются в планах.
+
+[Физическая проверка TextEdit](RUNTIME_VALIDATION_2026-10-17.md) · [Изменения интерфейса](DESIGN_REFRESH_2026-10-16.md) · [Языковые исправления и ограничения](CARAMBA_FIXES_2026-10-16.md).

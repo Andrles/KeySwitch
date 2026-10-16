@@ -5,7 +5,7 @@ enum ManualCommand: Int, CaseIterable {
 
     var title: String {
         switch self {
-        case .layout: return "Сменить раскладку слова или выделения"
+        case .layout: return "Сменить раскладку"
         case .accept: return "Применить подсказку"
         case .undo: return "Отменить последнее исправление"
         case .uppercase: return "Выделение → ПРОПИСНЫЕ"
@@ -229,13 +229,14 @@ struct ShortcutBinding: Codable, Equatable {
 }
 
 enum ManualEditResult: Equatable {
-    case success, permission, secure, excluded, unsupported, noSelection, tooLong, unchanged, contextChanged, noWord, noSuggestion, noUndo
+    case success, inputSourceUnchanged, permission, secure, excluded, unsupported, noSelection, tooLong, unchanged, contextChanged, noWord, noSuggestion, noUndo
     var message: String {
         switch self {
         case .success: return "Готово."
+        case .inputSourceUnchanged: return "Текст заменён. macOS не подтвердила смену языка. Проверьте раскладку и наличие русского и английского языков в настройках клавиатуры."
         case .permission: return "Разрешите KeySwitch доступ в настройках macOS, затем повторите действие."
         case .secure: return "Защищённое поле не изменяется. Перейдите в обычное текстовое поле."
-        case .excluded: return "Для этого приложения исправления отключены. Проверьте раздел «Где не исправлять»."
+        case .excluded: return "Для этого приложения исправления отключены. Проверьте раздел «Исключения»."
         case .unsupported: return "Это поле не позволяет изменить выделение. Попробуйте обычное текстовое поле."
         case .noSelection: return "Сначала выделите текст, который нужно изменить."
         case .tooLong: return "Выделение больше 4096 символов. Выберите меньший фрагмент."

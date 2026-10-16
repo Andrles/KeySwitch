@@ -8,7 +8,7 @@ func stream(_ input: String, spelling: Bool) -> String {
     var output = "", token = "", suppressed = false
     for c in input {
         let text = String(c)
-        if KeyboardTokenClassifier.isTechnicalBoundary(text) { token = ""; suppressed = false; output += text; continue }
+        if text == "\t" || KeyboardTokenClassifier.isTechnicalBoundary(text) { token = ""; suppressed = false; output += text; continue }
         if KeyboardTokenClassifier.continuesWord(text) {
             output += text
             if !suppressed {

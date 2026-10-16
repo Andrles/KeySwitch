@@ -7,28 +7,39 @@ final class SystemDictionary {
     private var cache: [String: Bool] = [:]
     private var suggestionCache: [String: String] = [:]
     private var noSuggestionCache: Set<String> = []
-    private var availability: [Language: Bool] = [:]
+    private var availability: [Language: (available: Bool, checkedAt: TimeInterval)] = [:]
+    private let now: () -> TimeInterval
+    private let availableLanguages: () -> [String]
+    private let check: ((String, Language) -> Bool)?
+    private let isDisabled: () -> Bool
     private let lock = NSLock()
 
-    private init() {}
+    init(now: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+         availableLanguages: @escaping () -> [String] = { NSSpellChecker.shared.availableLanguages },
+         check: ((String, Language) -> Bool)? = nil,
+         isDisabled: @escaping () -> Bool = {
+             ProcessInfo.processInfo.environment["KEYSWITCH_DISABLE_SYSTEM_DICTIONARY"] == "1"
+         }) {
+        self.now = now
+        self.availableLanguages = availableLanguages
+        self.check = check
+        self.isDisabled = isDisabled
+    }
 
     func contains(_ word: String, language: Language) -> Bool {
         guard !word.isEmpty, word.count <= 64 else { return false }
-        let normalized = word.lowercased()
-        let key = "\(language.rawValue):\(normalized)"
+        // macOS accepts arbitrary ALL-CAPS and mixed-case abbreviations. Preserve title case
+        // for proper names, but verify capitals as a normal lexical word.
+        let letters = word.filter(\.isLetter)
+        let query = letters.dropFirst().contains(where: \.isUppercase) ? word.lowercased() : word
+        let key = "\(language.rawValue):\(query)"
 
         lock.lock()
         defer { lock.unlock() }
 
-        if let cached = cache[key] {
-            return cached
-        }
-        guard dictionaryIsAvailable(for: language) else {
-            cache[key] = false
-            return false
-        }
-
-        let result = spellingIsCorrect(normalized, language: language)
+        guard dictionaryIsAvailable(for: language) else { return false }
+        if let cached = cache[key] { return cached }
+        let result = spellingIsCorrect(query, language: language)
         if cache.count >= 20_000 {
             cache.removeAll(keepingCapacity: true)
         }
@@ -39,11 +50,12 @@ final class SystemDictionary {
     func suggestion(for word: String, language: Language) -> String? {
         guard !word.isEmpty, word.count <= 64 else { return nil }
         let normalized = word.lowercased()
-        let key = "\(language.rawValue):\(normalized)"
+        let key = "\(language.rawValue):\(word)"
 
         lock.lock()
         defer { lock.unlock() }
 
+        guard dictionaryIsAvailable(for: language) else { return nil }
         if let cached = suggestionCache[key] {
             return TextToken.applyingCase(of: word, to: cached)
         }
@@ -53,8 +65,7 @@ final class SystemDictionary {
         if noSuggestionCache.contains(key) {
             return nil
         }
-        guard dictionaryIsAvailable(for: language),
-              !spellingIsCorrect(normalized, language: language) else {
+        guard !spellingIsCorrect(word, language: language) else {
             noSuggestionCache.insert(key)
             return nil
         }
@@ -84,28 +95,27 @@ final class SystemDictionary {
     }
 
     private func dictionaryIsAvailable(for language: Language) -> Bool {
-        if ProcessInfo.processInfo.environment["KEYSWITCH_DISABLE_SYSTEM_DICTIONARY"] == "1" {
-            return false
+        guard !isDisabled() else { return false }
+        let timestamp = now()
+        if let cached = availability[language],
+           timestamp - cached.checkedAt < (cached.available ? 60 : 2) {
+            return cached.available
         }
-        if let cached = availability[language] {
-            return cached
-        }
-
-        let identifier = languageIdentifier(for: language)
-        guard checker.availableLanguages.contains(identifier) else {
-            availability[language] = false
-            return false
-        }
-
-        // A failed spell-check service can report every word as valid. A known
-        // impossible word keeps that failure from causing false conversions.
         let probe = language == .russian ? "ыъыъщщъы" : "zzqxjkvbwq"
-        let available = !spellingIsCorrect(probe, language: language)
-        availability[language] = available
+        let available = availableLanguages().contains(languageIdentifier(for: language)) &&
+            !spellingIsCorrect(probe, language: language)
+        // A service outage must not poison word caches after recovery. Refresh
+        // healthy results too: the spelling service can restart during a session.
+        let prefix = "\(language.rawValue):"
+        cache = cache.filter { !$0.key.hasPrefix(prefix) }
+        suggestionCache = suggestionCache.filter { !$0.key.hasPrefix(prefix) }
+        noSuggestionCache = Set(noSuggestionCache.filter { !$0.hasPrefix(prefix) })
+        availability[language] = (available, timestamp)
         return available
     }
 
     private func spellingIsCorrect(_ word: String, language: Language) -> Bool {
+        if let check { return check(word, language) }
         let misspelledRange = checker.checkSpelling(
             of: word,
             startingAt: 0,

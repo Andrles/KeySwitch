@@ -31,14 +31,14 @@ enum LocalLexicon {
     научно-технический нейрон нейросеть неплатёжеспособность ночь образование объявление объём опечатка
     орфография ответственность откат отладчик очередь папа параллелепипед парк переключение переменная питон
     по-русски подъезд пожалуйста полиморфизм постгрес поток привет приложение программирование программист
-    протокол пунктуация разработчик разрешение раскладка ребенок ребёнок рентгеноэлектрокардиографический
+    протокол пунктуация работа работаю разработчик разрешение раскладка раскладки распознавание ребенок ребёнок рентгеноэлектрокардиографический
     репозиторий рефакторинг свифт сегодня сельскохозяйственный семафор семья сервер сериализация синус
     синхрофазотрон слияние собака спасибо стол стул счастье съезд тайпскрипт типизация университет утро физика
     функция химия хлеб цапля что-нибудь школа шоссе щука экземпляр экспонента электрификация электричество
     электрон энциклопедия юла яблоко ёж ёлка
     """.lowercased().split(whereSeparator: \.isWhitespace).map(String.init))
     static let names: Set<String> = Set("""
-    Aleksey Alexander Alexei Alexey Alice Amelia Anderson Andrew Ann Anna Anne Anthony Anton Ava Benjamin Björn
+    Aleksey Alexander Alexandr Alexei Alexey Alice Amelia Anderson Andrew Ann Anna Anne Anthony Anton Ava Benjamin Björn
     Boris Brown Catherine Charlotte Chen Daniel David Dmitri Dmitry Dostoevsky Einstein Elena Elizabeth Emma
     Ethan Evelyn François Garcia Gates George Harper Harris Harry Henry Ivan Ivanov Jack Jackson Jacob James
     Jane Janet Jobs John Johnson Jones José Julia Julie Kate Katherine Kim Knuth Lee Liam Lovelace Lucas Maria
@@ -46,9 +46,9 @@ enum LocalLexicon {
     Nick Noah O'Connor Olga Oliver Olivia Patel Paul Peter Petr Petrov Pushkin Sergei Sergey Sidorov Singh
     Smirnov Smith Sophia Stanislav Tatiana Tatyana Taylor Tchaikovsky Thomas Thompson Tolstoy Torvalds Turing
     Victor Vladimir Wang White William Williams Zhang Zoë Zuckerberg Łukasz Александр Александра Алексей Алиса
-    Андрей Анна Антон Артем Артур Артём Борис Вадим Валерий Валерия Василий Васильев Вера Вероника Виктор
+    Анастасия Андрей Анна Антон Артем Артур Артём Борис Вадим Валерий Валерия Василий Васильев Вера Вероника Виктор
     Владимир Волков Гагарин Галина Георгий Давид Даниил Дарья Денис Дмитрий Достоевский Евгений Евгения Егор
-    Екатерина Елена Жан-Поль Зайцев Захар Иван Иванов Игорь Илья Инна Кирилл Ксения Кузнецов Леонид Лесандров
+    Екатерина Елена Жан-Поль Зайцев Захар Иван Иванов Игорь Илья Инна Ирина Глеб Кирилл Ксения Кузнецов Леонид Лесандров
     Лидия Ломоносов Любовь Людмила Максим Марина Мария Марк Менделеев Милана Михаил Морозов Мухаммед Надежда
     Наталия Наталья Никита Николай Нина Новиков Ньютон О'Коннор Олег Ольга Павел Павлова Петр Петров Полина
     Попов Пушкин Пётр Роман Руслан Светлана Семен Семён Сергеева Сергей Сидоров Смирнов Соколов Соловьёв София

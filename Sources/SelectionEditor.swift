@@ -53,7 +53,7 @@ enum SelectionEditor {
         guard !IsSecureEventInputEnabled(), NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier, InputSourceController.currentIdentifier() == sourceID else { return .contextChanged }
         let applied = AXUIElementSetAttributeValue(field, kAXSelectedTextAttribute as CFString, result as CFString) == .success
         if applied, command == .layout, let language = LanguageEngine().forcedConversion(text)?.language {
-            InputSourceController.select(language: language)
+            if !InputSourceController.select(language: language).succeeded { return .inputSourceUnchanged }
         }
         return applied ? .success : .unsupported
     }

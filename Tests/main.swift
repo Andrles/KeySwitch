@@ -53,9 +53,11 @@ expect(engine.correction(for: "Ч3")?.replacement, "X3", "Automotive model X3")
 expect(engine.correction(for: "Й7")?.replacement, "Q7", "Automotive model Q7")
 expect(engine.correction(for: "СЧ-5")?.replacement, "CX-5", "Automotive model CX-5")
 expect(engine.correction(for: "ПДУ450")?.replacement, "GLE450", "Automotive model GLE450")
-expect(engine.spellingSuggestion(for: "Alexandr", language: .english),
+assert(engine.spellingSuggestion(for: "Alexandr", language: .english) == nil,
+       "Valid transliteration Alexandr must not be rewritten as Alexander")
+expect(engine.spellingSuggestion(for: "Alexanddr", language: .english),
        "Alexander",
-       "User test: English name spelling")
+       "English name typo suggestion")
 expect(engine.forcedConversion("руддщ")?.replacement, "hello", "Forced conversion")
 expectNil(engine.correction(for: "hello"), "Valid English stays")
 expectNil(engine.correction(for: "привет"), "Valid Russian stays")
@@ -413,3 +415,73 @@ suffixRequire(SuffixReplacement.apply(VerifiedTextSuffix(text: "превет ", 
 let corruptedEditor = SuffixEditorFixture("превет "); corruptedEditor.transformWrite = { _ in "пресет " }
 suffixRequire(SuffixReplacement.apply(VerifiedTextSuffix(text: "превет ", caret: 7), replacement: "привет ", using: corruptedEditor) == .unverified, "unexpected result never reports success")
 print("Verified suffix replacement regressions: OK")
+
+// Reproduced Caramba comparison cases, including mapped punctuation at edges.
+for (input, expected) in [
+    ("[jhjij,", "хорошо,"), ("([jhjij)", "(хорошо)"),
+    ("ВЩТэЕ", "DON'T"), ("Ящë", "Zoë"), ("enhj,", "утро,"), ("hf,jnf...", "работа..."), ("GHBDTN", "ПРИВЕТ"), ("Fyfcnfcbz", "Анастасия"),
+    ("hfcrkflrb", "раскладки"), ("hfcgjpyfdfybt", "распознавание"),
+    (",fpf,", "база,"), ("'nj!", "это!")
+] {
+    expect(engine.correction(for: input)?.replacement, expected, "Boundary/name regression \(input)")
+}
+
+// Simulate an unavailable and an all-words-valid spelling service, then recovery.
+var dictionaryTime = 0.0
+var serviceUp = false
+var failOpen = false
+var checks = 0
+let recoveringDictionary = SystemDictionary(now: { dictionaryTime },
+    availableLanguages: { serviceUp ? ["ru", "en"] : [] },
+    check: { word, _ in checks += 1; return failOpen || ["Ирина", "Igor"].contains(word) },
+    isDisabled: { false })
+assert(!recoveringDictionary.contains("Ирина", language: .russian))
+serviceUp = true
+dictionaryTime = 3
+assert(recoveringDictionary.contains("Ирина", language: .russian))
+assert(!recoveringDictionary.contains("ирина", language: .russian))
+assert(recoveringDictionary.contains("Igor", language: .english))
+assert(!recoveringDictionary.contains("igor", language: .english))
+let cachedChecks = checks
+assert(recoveringDictionary.contains("Ирина", language: .russian))
+assert(checks == cachedChecks)
+failOpen = true
+dictionaryTime = 64
+assert(!recoveringDictionary.contains("Ирина", language: .russian))
+failOpen = false
+dictionaryTime = 67
+assert(recoveringDictionary.contains("Ирина", language: .russian))
+
+var selectedLanguage: Language? = .english
+var sourcePresent = false
+var sourceStatus: Int32 = 0
+var confirmsSwitch = true
+var selections = 0
+func selectTestSource() -> InputSourceSelectionResult {
+    InputSourceSelection.select(language: .russian,
+        currentLanguage: { selectedLanguage },
+        findSource: { _ in sourcePresent ? "ru-test" : nil },
+        apply: { _ in
+            selections += 1
+            if sourceStatus == 0 && confirmsSwitch { selectedLanguage = .russian }
+            return sourceStatus
+        })
+}
+assert(selectTestSource() == .unavailable && selections == 0)
+sourcePresent = true
+sourceStatus = -50
+assert(selectTestSource() == .rejected(-50) && selectedLanguage == .english)
+sourceStatus = 0
+confirmsSwitch = false
+assert(selectTestSource() == .unconfirmed)
+confirmsSwitch = true
+assert(selectTestSource() == .selected)
+let completedSelections = selections
+assert(selectTestSource() == .alreadySelected && selections == completedSelections)
+// Removing/re-enabling a source is picked up without restarting the application.
+selectedLanguage = .english
+sourcePresent = false
+assert(selectTestSource() == .unavailable)
+sourcePresent = true
+assert(selectTestSource() == .selected)
+print("Names, punctuation, dictionary recovery and input-source failures: OK")

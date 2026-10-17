@@ -24,3 +24,8 @@ xcrun swiftc \
   "$project_dir/Tests/main.swift" \
   -o "$project_dir/build/tests/LanguageEngineTests"
 "$project_dir/build/tests/LanguageEngineTests"
+xcrun swiftc -sdk "$sdk_path" \
+  "$project_dir/Sources/SingleInstance.swift" \
+  "$project_dir/Tests/SingleInstance/main.swift" \
+  -o "$project_dir/build/tests/SingleInstanceTests"
+"$project_dir/build/tests/SingleInstanceTests"

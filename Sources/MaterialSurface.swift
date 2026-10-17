@@ -39,7 +39,7 @@ class MaterialSurface: NSView {
             effect.topAnchor.constraint(equalTo: topAnchor),
             effect.bottomAnchor.constraint(equalTo: bottomAnchor)
         ])
-        layer?.cornerRadius = role == .popover || role == .group ? 12 : 0
+        layer?.cornerRadius = role == .popover ? 16 : role == .group ? 12 : 0
         layer?.masksToBounds = true
         displayObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
@@ -70,6 +70,6 @@ class MaterialSurface: NSView {
             layer?.backgroundColor = color.cgColor
             layer?.borderColor = NSColor.separatorColor.cgColor
         }
-        layer?.borderWidth = options.increaseContrast ? 1 : 0
+        layer?.borderWidth = options.increaseContrast ? 1 : role == .popover ? 0.5 : 0
     }
 }

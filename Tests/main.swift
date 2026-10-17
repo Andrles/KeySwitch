@@ -17,6 +17,10 @@ func expectNil(_ actual: Correction?, _ label: String) {
 }
 
 expect(engine.correction(for: "ghbdtn")?.replacement, "привет", "English keys to Russian")
+expect(engine.forcedConversion("ghtdtn")?.replacement, "превет",
+       "Wrong-layout typo preserves spelling during explicit conversion")
+expectNil(engine.correction(for: "ghtdtn"),
+          "Wrong-layout typo must not silently perform two uncertain corrections")
 expect(engine.correction(for: "руддщ")?.replacement, "hello", "Russian keys to English")
 expect(engine.correction(for: "ghjgecrftim")?.replacement, "пропускаешь", "Russian verb")
 expect(engine.correction(for: "bkb")?.replacement, "или", "Short Russian word")

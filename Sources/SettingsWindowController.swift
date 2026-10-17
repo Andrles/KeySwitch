@@ -209,10 +209,10 @@ final class SettingsWindowController: NSWindowController,
         ])
 
         let header = NSStackView()
-        header.orientation = .horizontal
-        header.alignment = .centerY
-        header.spacing = 10
-        header.addArrangedSubview(appMark(size: 32))
+        header.orientation = .vertical
+        header.alignment = .leading
+        header.spacing = 12
+        header.addArrangedSubview(appMark(size: 48))
         let labels = NSStackView()
         labels.orientation = .vertical
         labels.spacing = 1
@@ -341,7 +341,7 @@ final class SettingsWindowController: NSWindowController,
     }
 
     private func buildGeneralSection() -> NSView {
-        let (view, stack) = sectionCanvas(title: "Раскладка", subtitle: "Печатайте на русском и английском. KeySwitch исправит язык слова.")
+        let (view, stack) = sectionCanvas(title: "Печатайте свободно.", subtitle: "О языке слова позаботится KeySwitch.")
         let status = card(height: 140)
         let row = NSStackView()
         row.orientation = .horizontal
@@ -375,10 +375,12 @@ final class SettingsWindowController: NSWindowController,
         if !monitor.isTrusted {
             status.stack.addArrangedSubview(NSButton(title: "Разрешить исправление…", target: self, action: #selector(openPermissionsSection)))
         }
+        status.stack.addArrangedSubview(separator())
+        status.stack.addArrangedSubview(settingRow(title: "Звук при исправлении", subtitle: "Короткий сигнал после замены слова", state: preferences.playSound, action: #selector(toggleSound(_:))))
         stack.addArrangedSubview(status.view)
 
         let practice = card(height: 142)
-        practice.stack.addArrangedSubview(label("Проверьте на примере", size: 15, weight: .semibold))
+        practice.stack.addArrangedSubview(label("Попробуйте сами", size: 15, weight: .medium))
         practice.stack.addArrangedSubview(label("Введите ghbdtn — получится привет. Пример работает только в этом окне.", size: 12, color: UIStyle.secondaryText, wrapping: true))
         let practiceRow = NSStackView()
         practiceRow.orientation = .horizontal
@@ -396,7 +398,6 @@ final class SettingsWindowController: NSWindowController,
         practice.stack.addArrangedSubview(result)
         stack.addArrangedSubview(practice.view)
         stack.addArrangedSubview(verticalLabels(title: "Двойной Shift", subtitle: preferences.shiftLayoutOnly ? "Сменить язык текущего слова." : "Сменить язык текущего слова. Если есть подсказка — применить её. Сразу после исправления — отменить замену."))
-        stack.addArrangedSubview(settingRow(title: "Звук при исправлении", subtitle: "Короткий сигнал после замены слова", state: preferences.playSound, action: #selector(toggleSound(_:))))
         return view
     }
 
@@ -748,7 +749,7 @@ final class SettingsWindowController: NSWindowController,
             stack.topAnchor.constraint(equalTo: document.topAnchor, constant: 24),
             stack.bottomAnchor.constraint(equalTo: document.bottomAnchor, constant: -24)
         ])
-        let titleLabel = label(title, size: 24, weight: .semibold)
+        let titleLabel = label(title, size: 25, weight: .medium)
         let subtitleLabel = label(subtitle,
                                   size: 13,
                                   color: UIStyle.secondaryText, wrapping: true)

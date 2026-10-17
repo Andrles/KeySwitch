@@ -1,12 +1,17 @@
 import AppKit
 
-final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSPopoverDelegate {
     private lazy var statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let monitor = KeyboardMonitor.shared
     private let preferences = Preferences.shared
     private let updateChecker = UpdateChecker.shared
     private lazy var spellingIndicator = SpellingIndicator()
     private var settingsController: SettingsWindowController?
+    private let quickPopover = NSPopover()
+    private let quickSettings = QuickSettingsController()
+    private var outsideClickMonitor: Any?
+    private var localClickMonitor: Any?
+    private var contextMenu: NSMenu?
     private var toggleItem: NSMenuItem?
     private var statusMenuOpen = false
     private var menuStatusItem: NSMenuItem?
@@ -33,7 +38,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                                                name: .keySwitchHideRequested,
                                                object: nil)
         refreshMenu()
-        if CommandLine.arguments.contains("--ui-preview") { return }
+        if CommandLine.arguments.contains("--ui-preview") {
+            if CommandLine.arguments.contains("--glass-preview") {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                    guard let self, self.settingsController?.window != nil else { return }
+                    self.spellingIndicator.onApply = { [weak self] in self?.spellingIndicator.showResult(applied: true) }
+                    self.spellingIndicator.show(word: "превет", suggestion: "привет",
+                        screen: self.settingsController?.window?.screen)
+                }
+            }
+            return
+        }
         if CommandLine.arguments.contains("--launch-check") {
             var presentationCheckPassed = NSApp.activationPolicy() == .accessory
             print("Initial: controller=\(settingsController != nil) window=\(settingsController?.window != nil) visible=\(settingsController?.window?.isVisible == true)")
@@ -46,13 +61,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.refreshMenu()
                 presentationCheckPassed = presentationCheckPassed && NSApp.activationPolicy() == .accessory
                 self.hideSettings()
-                guard let menu = self.statusItem.menu,
+                self.toggleQuickSettings()
+                presentationCheckPassed = presentationCheckPassed && self.quickPopover.isShown
+                presentationCheckPassed = presentationCheckPassed && self.outsideClickMonitor != nil && self.localClickMonitor != nil
+                print("Popover click check: shown=\(self.quickPopover.isShown) global=\(self.outsideClickMonitor != nil) local=\(self.localClickMonitor != nil)")
+                if let button = self.statusItem.button, let window = button.window {
+                    let icon = window.convertToScreen(button.convert(button.bounds, to: nil))
+                    self.dismissQuickSettingsIfOutside(NSPoint(x: icon.midX, y: icon.midY))
+                    print("Popover icon check: shown=\(self.quickPopover.isShown)")
+                    presentationCheckPassed = presentationCheckPassed && self.quickPopover.isShown
+                }
+                if let window = self.quickSettings.view.window {
+                    let inside = NSPoint(x: window.frame.midX, y: window.frame.midY)
+                    self.dismissQuickSettingsIfOutside(inside)
+                    print("Popover inside check: shown=\(self.quickPopover.isShown)")
+                    presentationCheckPassed = presentationCheckPassed && self.quickPopover.isShown
+                    self.dismissQuickSettingsIfOutside(NSPoint(x: window.frame.minX - 20, y: window.frame.minY - 20))
+                    print("Popover outside check: shown=\(self.quickPopover.isShown) global=\(self.outsideClickMonitor != nil) local=\(self.localClickMonitor != nil)")
+                } else { presentationCheckPassed = false }
+                guard let menu = self.contextMenu,
                       let index = menu.items.firstIndex(where: { $0.action == #selector(AppDelegate.openSettings) }) else { return }
                 menu.performActionForItem(at: index)
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            // NSPopover remains shown until its native close animation finishes.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
                 let visible = self?.settingsController?.window?.isVisible == true
                 let menuBarOnly = NSApp.activationPolicy() == .accessory
+                let outsideClosed = self?.quickPopover.isShown == false &&
+                    self?.outsideClickMonitor == nil && self?.localClickMonitor == nil
+                presentationCheckPassed = presentationCheckPassed && outsideClosed
+                print("Popover close completion: closedAndMonitorsRemoved=\(outsideClosed)")
                 print("KeySwitch launch check: delegate=\(self != nil) window=\(self?.settingsController?.window != nil) windowVisible=\(visible) menuBarOnly=\(menuBarOnly) dockToggle=\(presentationCheckPassed)")
                 fflush(stdout)
                 exit(visible && menuBarOnly && presentationCheckPassed ? 0 : 1)
@@ -84,10 +122,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self.undoIgnoredWord = nil
         }
         spellingIndicator.onDismiss = { [weak self] in self?.monitor.dismissSuggestion() }
-        monitor.isInteractingWithMenu = { [weak self] in self?.statusMenuOpen ?? false }
+        monitor.isInteractingWithMenu = { [weak self] in (self?.statusMenuOpen ?? false) || (self?.quickPopover.isShown ?? false) || (self?.spellingIndicator.isMenuOpen ?? false) }
         monitor.preservesFeedbackAtPoint = { [weak self] point in
             guard let self else { return false }
-            if self.statusMenuOpen || self.spellingIndicator.contains(eventPoint: point) { return true }
+            if self.statusMenuOpen || self.quickPopover.isShown || self.spellingIndicator.isMenuOpen || self.spellingIndicator.contains(eventPoint: point) { return true }
             guard let button = self.statusItem.button, let window = button.window else { return false }
             let screenPoint = NSPoint(x: point.x, y: (NSScreen.screens.first?.frame.maxY ?? 0) - point.y)
             return window.convertToScreen(button.convert(button.bounds, to: nil)).contains(screenPoint)
@@ -99,7 +137,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.undoIgnoredWord = nil
         }
         monitor.onSpellingIssue = { [weak self] word, suggestion in
-            self?.spellingIndicator.show(word: word, suggestion: suggestion, screen: TextInputContext.current()?.screen)
+            let context = TextInputContext.current()
+            self?.spellingIndicator.show(word: word, suggestion: suggestion, screen: context?.screen)
         }
         // Programmatic focus changes do not always generate an input event.
         suggestionTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
@@ -211,7 +250,85 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         quit.target = NSApp
         quit.image = menuSymbol("xmark.square")
         menu.addItem(quit)
-        statusItem.menu = menu
+        contextMenu = menu
+        statusItem.button?.target = self
+        statusItem.button?.action = #selector(statusItemClicked(_:))
+        statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        quickPopover.contentViewController = quickSettings
+        quickPopover.behavior = .transient
+        quickPopover.animates = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        quickPopover.delegate = self
+        quickSettings.onToggle = { [weak self] in self?.toggleEnabled() }
+        quickSettings.onSettings = { [weak self] in self?.quickPopover.performClose(nil); self?.openSettings() }
+        quickSettings.onPermission = { [weak self] in self?.quickPopover.performClose(nil); self?.checkPermission() }
+        quickSettings.onMore = { [weak self] in
+            self?.quickPopover.performClose(nil)
+            DispatchQueue.main.async { [weak self] in self?.showContextMenu() }
+        }
+    }
+
+    @objc private func statusItemClicked(_ sender: Any?) {
+        if NSApp.currentEvent?.type == .rightMouseUp { showContextMenu() }
+        else { toggleQuickSettings() }
+    }
+
+    private func showContextMenu() {
+        quickPopover.performClose(nil)
+        guard let menu = contextMenu, let button = statusItem.button else { return }
+        updateApplicationExclusionItem()
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.minY - 4), in: button)
+    }
+
+    private func toggleQuickSettings() {
+        if quickPopover.isShown { quickPopover.performClose(nil); return }
+        guard let button = statusItem.button else { return }
+        captureExternalApplication(NSWorkspace.shared.frontmostApplication)
+        monitor.invalidateContext()
+        spellingIndicator.hide()
+        quickSettings.refresh(state: monitor.state, enabled: preferences.enabled)
+        quickPopover.animates = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        quickPopover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        if quickPopover.isShown { startOutsideClickMonitoring() }
+    }
+
+    private func startOutsideClickMonitoring() {
+        stopOutsideClickMonitoring()
+        let mask: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+        // Transient popovers can remain open when an accessory application was
+        // never active. Observe desktop/other-app clicks without consuming them.
+        outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] _ in
+            self?.dismissQuickSettingsIfOutside(NSEvent.mouseLocation)
+        }
+        localClickMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
+            self?.dismissQuickSettingsIfOutside(NSEvent.mouseLocation)
+            return event
+        }
+    }
+
+    private func dismissQuickSettingsIfOutside(_ point: NSPoint) {
+        guard quickPopover.isShown else { return }
+        if let window = quickSettings.view.window, window.frame.contains(point) { return }
+        // The status button handles its own toggle on mouse-up. Closing here on
+        // mouse-down would immediately reopen the panel on the same click.
+        if let button = statusItem.button, let window = button.window,
+           window.convertToScreen(button.convert(button.bounds, to: nil)).contains(point) { return }
+        quickPopover.performClose(nil)
+    }
+
+    private func stopOutsideClickMonitoring() {
+        if let outsideClickMonitor { NSEvent.removeMonitor(outsideClickMonitor) }
+        if let localClickMonitor { NSEvent.removeMonitor(localClickMonitor) }
+        outsideClickMonitor = nil
+        localClickMonitor = nil
+    }
+
+    func popoverDidClose(_ notification: Notification) {
+        stopOutsideClickMonitoring()
+        statusMenuOpen = false
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        stopOutsideClickMonitoring()
     }
 
     func menuWillOpen(_ menu: NSMenu) {
@@ -236,6 +353,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         applyPresentation()
         settingsController?.refresh()
         let state = monitor.state
+        quickSettings.refresh(state: state, enabled: preferences.enabled)
         menuStatusItem?.title = state.title
         statusItem.button?.toolTip = "KeySwitch: \(state.title)"
         statusItem.button?.setAccessibilityLabel("KeySwitch: \(state.title)")
@@ -310,6 +428,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func openSettings() {
+        quickPopover.performClose(nil)
         applyPresentation()
         if settingsController == nil { settingsController = SettingsWindowController(initialSection: 0) }
         settingsController?.refresh()

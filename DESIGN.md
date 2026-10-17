@@ -28,8 +28,8 @@ typography:
     fontWeight: 400
   suggestion:
     fontFamily: SF Pro
-    fontSize: 16pt
-    fontWeight: 600
+    fontSize: 21pt
+    fontWeight: 500
 rounded:
   surface: 12pt
   sidebar-selection: 10pt
@@ -51,9 +51,9 @@ components:
     rounded: '{rounded.surface}'
     padding: 18pt 20pt 16pt
   spelling-suggestion:
-    width: 380pt
+    width: 330pt
     rounded: '{rounded.surface}'
-    padding: 14pt 16pt
+    padding: 16pt 18pt
 ---
 
 # Design System: KeySwitch
@@ -113,7 +113,7 @@ The frontmatter owns the current content margin, section gap and group inset val
 
 The first “Раскладка” view presents current state and the “Исправлять раскладку” NSSwitch, then the safe local example. Double-Shift help and sound follow. Advanced settings live on their own pages; this is the current settings composition, not a universal layout for every future surface.
 
-The spelling panel anchors to the visible screen's top-right corner with an inset (18 pt). Its width stays fixed to the frontmatter value; its initial/minimum height (132 pt) grows vertically from fitting content. The stack uses the popup spacing token and the action row uses a gap (10 pt). Long suggestions wrap instead of widening the panel.
+The spelling panel stays in the top-right corner of the editor's display with a 12 pt inset from the usable screen area. It does not follow the caret. Width is 330 pt, bounded by the visible screen; the minimum height is 132 pt and grows vertically from fitting content. The stack uses the popup spacing token and the action row uses a gap (10 pt). Long suggestions wrap instead of widening the panel.
 
 ## Elevation & Depth
 
@@ -127,7 +127,7 @@ Groups use the shared group tint over the window instead of stacking blur layers
 
 ## Shapes
 
-Groups and suggestion surfaces use the frontmatter surface radius and clip to bounds. The window and sidebar material views do not add a custom corner radius. Selected sidebar rows use their own softer rounded inset (2 pt on each side). Native window chrome, buttons, fields, switches and segmented controls retain their AppKit shapes.
+Groups use the 12 pt surface radius; suggestion and quick-panel surfaces use 16 pt and clip to bounds. Popover surfaces have a subtle half-point semantic border; Increase Contrast uses one point. The window and sidebar material views do not add a custom corner radius. Selected sidebar rows use their own softer rounded inset (2 pt on each side). Native window chrome, buttons, fields, switches and segmented controls retain their AppKit shapes.
 
 The flat language-key A/Я mark retains KeySwitch's integrated switching symbol. The menu bar uses template switching arrows when ready, a pause symbol when paused and a warning symbol when permission or monitoring is unavailable.
 
@@ -159,7 +159,7 @@ Application rules distinguish full legacy exclusions from partial automatic feat
 
 ### Spelling suggestion
 
-A nonactivating floating native panel. Show the word and suggestion, then contextual keyboard help, then three actions: “Заменить”, “Пропустить”, “Не предлагать”. The last action is an unbordered native button with a fuller tooltip/accessibility label. Do not capture a default Return key equivalent for Replace.
+A nonactivating floating native panel. Show the word and suggestion, then contextual keyboard help, then two actions: “Заменить” and “Пропустить”. A labelled overflow control opens a native menu containing “Не предлагать это слово”. Menu tracking preserves the pending suggestion without activating the editor's document or bypassing suffix validation. Do not capture a default Return key equivalent for Replace.
 
 Double Shift applies a suggestion only when that configured mode permits it; Esc skips. Help communicates that replacing remains available only until subsequent input. Result states hide the action row and use clear success or unconfirmed-replacement copy. Ignore offers “Отменить исключение”; undo restores future checking. Announce suggestion and result changes through native accessibility announcements. Successful replacement feedback dismisses after 2 seconds; unconfirmed replacement feedback after 6 seconds.
 
@@ -182,3 +182,15 @@ Double Shift applies a suggestion only when that configured mode permits it; Esc
 - **Don't** restore the superseded purple gradient and glossy identity.
 - **Don't** imply that the safe local example verifies external editor compatibility.
 - **Don't** change product logic, permission boundaries or keyboard navigation as a styling shortcut.
+
+## Approved glass refinement — 17 October 2026
+
+The selected web study is translated into AppKit, using real system materials and the user's existing appearance setting. The sidebar presents a larger A/Я mark above navigation. The first page uses “Печатайте свободно.”, the current truthful readiness state, layout/sound switches and “Попробуйте сами”. All eight settings pages remain available.
+
+A primary click on the status icon opens a transient native NSPopover with live readiness, a persistent layout switch, an actionable permission button when needed, settings and “Ещё действия…”. A secondary click retains the complete original menu. Opening the quick panel explicitly invalidates any pending edit; automatic spelling feedback continues to use a nonactivating NSPanel and never opens the quick panel.
+
+While the quick panel is open, local and global mouse-down monitors explicitly close it for clicks outside the panel and status button, including the desktop. Events pass through unchanged. The status button retains its own mouse-up toggle to avoid reopening on the same click. Monitors are removed when the popover finishes closing or the application terminates.
+
+Panel placement does not authorize an edit. The existing current-field, suffix, caret, input-source and readback checks still determine whether a replacement is allowed. The panel does not acquire key focus when it appears. Escape and double Shift retain the user's configured behavior. Feedback remains in the same top-right corner after a result changes the panel size.
+
+The surface honors Reduce Transparency and Increase Contrast; quick-panel animation honors Reduce Motion. Native AppKit controls and accessibility announcements remain in use.

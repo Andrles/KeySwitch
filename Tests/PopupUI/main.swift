@@ -55,6 +55,38 @@ final class PopupTestDelegate: NSObject, NSApplicationDelegate {
             }
         }
         print("Settings/material regressions: OK (8 pages, light/dark, minimum width, native switch, opaque accessibility fallback)")
+        // Keep the same top/right margins as feedback changes height.
+        for visible in [NSRect(x: 0, y: 0, width: 1440, height: 900),
+                        NSRect(x: -1280, y: -200, width: 1280, height: 800)] {
+            for height: CGFloat in [132, 180, 350, 1600] {
+                let frame = SuggestionPlacement.frame(size: NSSize(width: 330, height: height), visibleFrame: visible)
+                require(visible.contains(frame), "suggestion must fit chosen screen")
+                require(frame.maxX == visible.maxX - 12 && frame.maxY == visible.maxY - 12,
+                        "suggestion must stay in top-right corner after resizing")
+            }
+        }
+        let quick = QuickSettingsController()
+        var toggled = false, settingsOpened = false
+        quick.onToggle = { toggled = true }
+        quick.onSettings = { settingsOpened = true }
+        for state in [MonitorState.ready, .paused, .needsPermission, .failed] {
+            quick.refresh(state: state, enabled: state != .paused)
+            require(quick.preferredContentSize.width == 320 && quick.preferredContentSize.height > 100, "quick settings size")
+            quick.view.setFrameSize(quick.preferredContentSize)
+            quick.view.layoutSubtreeIfNeeded()
+            let views = descendants(quick.view)
+            for control in views where control is NSControl && !control.isHiddenOrHasHiddenAncestor {
+                let frame = control.convert(control.bounds, to: quick.view)
+                require(quick.view.bounds.insetBy(dx: -1, dy: -1).contains(frame), "quick settings control clipped: \(frame)")
+            }
+            require(views.compactMap { $0 as? NSTextField }.contains { $0.stringValue == state.title }, "truthful quick state")
+            let toggle = views.compactMap { $0 as? NSSwitch }.first!
+            require(toggle.state == (state == .paused ? .off : .on), "quick switch state")
+            NSApp.sendAction(toggle.action!, to: toggle.target, from: toggle)
+            views.compactMap { $0 as? NSButton }.first { $0.title == "Открыть настройки…" }!.performClick(nil)
+        }
+        require(toggled && settingsOpened, "quick actions")
+        print("Glass regressions: OK (top-right positioning, negative display coordinates, resized feedback, quick settings states/actions)")
         var ignored = "", undone = "", dismissed = false
         indicator.onApply = { self.indicator.showResult(applied: false) }
         indicator.onIgnore = { ignored = $0 }
@@ -72,12 +104,23 @@ final class PopupTestDelegate: NSObject, NSApplicationDelegate {
                     let frame = view.convert(view.bounds, to: panel.contentView)
                     require(panel.contentView!.bounds.insetBy(dx: -1, dy: -1).contains(frame), "content outside popup: \(frame)")
                 }
+                if pair.0 == "превет", let content = panel.contentView,
+                   let image = content.bitmapImageRepForCachingDisplay(in: content.bounds) {
+                    content.cacheDisplay(in: content.bounds, to: image)
+                    let name = appearance == .aqua ? "glass-popup-light.png" : "glass-popup-dark.png"
+                    if let data = image.representation(using: .png, properties: [:]) {
+                        try? data.write(to: URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+                            .appendingPathComponent("build/tests/" + name))
+                    }
+                }
                 let replace = views.compactMap { $0 as? NSButton }.first { $0.title == "Заменить" }!
                 replace.performClick(nil)
                 require(indicator.isVisible, "failed replacement must stay visible")
                 require(views.compactMap { $0 as? NSTextField }.contains { $0.stringValue == "Не удалось подтвердить замену" }, "failure text missing")
                 indicator.show(word: pair.0, suggestion: pair.1)
-                views.compactMap { $0 as? NSButton }.first { $0.title == "Не предлагать" }!.performClick(nil)
+                let more = views.compactMap { $0 as? NSPopUpButton }.first!
+                let ignoreIndex = more.menu!.items.firstIndex { $0.title == "Не предлагать это слово" }!
+                more.menu!.performActionForItem(at: ignoreIndex)
                 require(ignored == pair.0 && indicator.isVisible, "ignore confirmation")
                 let undo = views.compactMap { $0 as? NSButton }.first { $0.title == "Отменить исключение" }!
                 require(!undo.isHidden, "undo missing")

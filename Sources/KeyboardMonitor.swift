@@ -268,6 +268,13 @@ final class KeyboardMonitor {
             invalidateContext()
             return Unmanaged.passUnretained(event)
         }
+        // AX can disappear for early letters in any editor. Require the entire
+        // token before any automatic feature; never act on a recognised tail.
+        guard let completeWord = completeBoundaryWord(in: context) else {
+            invalidateContext()
+            return Unmanaged.passUnretained(event)
+        }
+        currentWord = completeWord
         let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? ""
         if let phrase = preferences.snippet(for: currentWord, boundary: text, bundleID: bundleID),
            replaceTypedText(Correction(original: currentWord, replacement: phrase, language: InputSourceController.currentLanguage() ?? .english), boundaryEvent: event, preserveInputSource: true, feature: .snippets) {
@@ -282,7 +289,7 @@ final class KeyboardMonitor {
             inputBoundaryDiagnostic("token_" + tokenClass + "_units_" + String(currentWord.utf16.count))
         }
         if preferences.profile(for: bundleID).layout {
-            if let correction = boundaryLayoutCorrection(in: context) {
+            if let correction = layoutCorrection(for: currentWord) {
                 if replaceTypedText(correction, boundaryEvent: event, feature: .layout) {
                     currentWord = ""
                     wordContext = nil
@@ -635,29 +642,12 @@ final class KeyboardMonitor {
         return preferences.excludesApplication(bundleID)
     }
 
-    private func boundaryLayoutCorrection(in context: TextInputContext) -> Correction? {
-        guard context.requiresCompleteAddressWord else {
-            return layoutCorrection(for: currentWord) ?? recoveredMixedCorrection(in: context)
-        }
-        // Safari may temporarily deny AX access while typing. Only the complete
-        // current token may be corrected: a recognized suffix such as “ректор”
-        // must never produce a partial replacement inside “директор”.
-        guard let wordContext, context.isSameField(as: wordContext),
-              let token = KeyboardTokenRecovery.token(caret: context.selection.location,
-                  typedSuffix: currentWord, scope: .completeAddressWord,
-                  read: { context.text(in: $0) }) else {
-            inputBoundaryDiagnostic("address_word_unavailable")
-            return nil
-        }
-        inputBoundaryDiagnostic("address_word_verified")
-        return layoutCorrection(for: token)
-    }
-
-    private func recoveredMixedCorrection(in context: TextInputContext) -> Correction? {
-        guard let wordContext, context.isSameField(as: wordContext),
-              let token = KeyboardTokenRecovery.token(caret: context.selection.location,
-                  typedSuffix: currentWord, read: { context.text(in: $0) }) else { return nil }
-        return layoutCorrection(for: token)
+    private func completeBoundaryWord(in context: TextInputContext) -> String? {
+        guard let wordContext, context.isSameField(as: wordContext) else { return nil }
+        return KeyboardTokenRecovery.token(caret: context.selection.location,
+            typedSuffix: currentWord,
+            scope: context.requiresCompleteAddressWord ? .completeAddressWord : .completeWord,
+            read: { context.text(in: $0) })
     }
 
     private func layoutCorrection(for token: String) -> Correction? {

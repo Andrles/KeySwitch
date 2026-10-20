@@ -61,6 +61,7 @@ func recoveredToken(_ document: String, suffix: String) -> String? {
         return text.substring(with: range)
     }
 }
+expect(recoveredToken("lbhtrnjh", suffix: "htrnjh"), "lbhtrnjh", "Ordinary field: recover full homogeneous token, never its recognised suffix")
 expect(recoveredToken("ktв", suffix: "в"), "ktв", "Recover prefix discarded on source change")
 expect(recoveredToken("Предыдущее слово ktв", suffix: "в"), "ktв", "Only recover current token")
 expect(recoveredToken("🙂\nheддщ", suffix: "дщ"), "heддщ", "UTF-16 and multiline recovery")
@@ -70,8 +71,14 @@ assert(recoveredToken(String(repeating: "k", count: 70) + "в", suffix: "в") ==
        "Do not recover truncated long words")
 assert(KeyboardTokenRecovery.token(caret: 3, typedSuffix: "в", read: { _ in nil }) == nil,
        "Unavailable editor text must fail closed")
-let technical = recoveredToken("https://ktв", suffix: "в")!
-expectNil(engine.correction(for: technical), "Recovery must not strip a URL prefix")
+assert(recoveredToken("https://ktв", suffix: "в") == nil, "Recovery must refuse a URL instead of stripping its prefix")
+for (document, expected) in [("вчера lbhtrnjh", "lbhtrnjh"), ("🙂\nlbhtrnjh", "lbhtrnjh"), ("«ghbdtn,»", "«ghbdtn,»")] {
+    let suffix = document.hasSuffix("»") ? "ghbdtn,»" : "trnjh"
+    expect(recoveredToken(document, suffix: suffix), expected, "Complete word including punctuation")
+}
+for token in ["www.lbhtrnjh", "me@lbhtrnjh", "key=lbhtrnjh", "path/lbhtrnjh", "my_lbhtrnjh", "host:lbhtrnjh"] {
+    assert(recoveredToken(token, suffix: "trnjh") == nil, "Keep technical prefix in every field")
+}
 print("Mixed-layout recovery regressions: OK")
 
 func recoveredAddressWord(_ document: String, suffix: String) -> String? {

@@ -1,6 +1,6 @@
 import AppKit
 import Foundation
-struct AuditCase: Codable { let kind: String; let input: String; let expected: String; let language: String; let group: String }
+struct AuditCase: Codable { let kind: String; let input: String; let expected: String; let language: String; let group: String; let typedSuffix: String? }
 struct Result: Codable { let kind: String; let input: String; let expected: String; let actual: String; let group: String; let passed: Bool; let microseconds: Double }
 let engine = LanguageEngine()
 // Model only token accumulation/decision ordering. No AX permissions or OS keystroke delivery.
@@ -50,6 +50,13 @@ for c in cases {
     case "roundtrip": actual = engine.convert(engine.convert(c.input, to: lang.opposite), to: lang)
     case "stream": actual = stream(c.input, spelling: false)
     case "stream-auto-keep": actual = stream(c.input, spelling: true)
+    case "recover-layout":
+        let text = c.input as NSString
+        if let token = KeyboardTokenRecovery.token(caret: text.length, typedSuffix: c.typedSuffix ?? "",
+            read: { range in text.substring(with: range) }),
+           let correction = engine.correction(for: token) {
+            actual = String(c.input.dropLast(token.count)) + correction.replacement
+        } else { actual = c.input }
     default: _ = engine.correction(for: c.input); _ = engine.spellingSuggestion(for: c.input, language: lang); actual = c.input
     }
     let elapsed = Double(DispatchTime.now().uptimeNanoseconds-t)/1000

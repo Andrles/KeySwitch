@@ -1,5 +1,11 @@
 import Foundation
 
+assert(RuntimeCheckTarget.bundleIdentifier(arguments: ["KeySwitch"]) == nil)
+assert(RuntimeCheckTarget.bundleIdentifier(arguments: ["KeySwitch", "--input-diagnostics"]) == nil)
+assert(RuntimeCheckTarget.bundleIdentifier(arguments: ["KeySwitch", "--runtime-check"]) == "com.apple.TextEdit")
+assert(RuntimeCheckTarget.bundleIdentifier(arguments: ["KeySwitch", "--runtime-browser-check"]) == "local.keyswitch.browserlab")
+assert(RuntimeCheckTarget.bundleIdentifier(arguments: ["KeySwitch", "--runtime-check", "--runtime-browser-check"]) == "local.keyswitch.browserlab")
+
 let engine = LanguageEngine()
 
 func expect(_ actual: String?, _ expected: String, _ label: String) {
@@ -17,6 +23,83 @@ func expectNil(_ actual: Correction?, _ label: String) {
 }
 
 expect(engine.correction(for: "ghbdtn")?.replacement, "привет", "English keys to Russian")
+for word in ["ktв", "kев", "леd"] {
+    expect(engine.correction(for: word)?.replacement, "лев", "Mid-word source change: \(word)")
+}
+expect(engine.correction(for: "(ktв!)")?.replacement, "(лев!)", "Mixed word punctuation")
+expect(engine.correction(for: "Ktв")?.replacement, "Лев", "Mixed word title case")
+expect(engine.correction(for: "KTВ")?.replacement, "ЛЕВ", "Mixed word uppercase")
+expect(engine.correction(for: "рудlo")?.replacement, "hello", "Mixed word to English")
+expect(engine.correction(for: "heддщ")?.replacement, "hello", "Mixed English prefix")
+expect(engine.correction(for: "Fлександр")?.replacement, "Александр", "Mixed proper name")
+for word in ["ktв3", "api/ktв", "user@ktв", "foo_ktв", "https://ktв", "myKtв", "ktвxyz"] {
+    expectNil(engine.correction(for: word), "Mixed identifier or unknown word stays: \(word)")
+}
+expectNil(engine.correction(for: "ktв", ignored: ["ktв"]), "Ignored mixed word")
+expectNil(engine.correction(for: "ktв", learned: ["ktв"]), "Learned mixed word")
+var mixedCases = 0
+for (word, language) in [("лев", Language.russian), ("привет", .russian),
+                          ("раскладки", .russian), ("Анастасия", .russian),
+                          ("hello", .english), ("world", .english),
+                          ("keyboard", .english), ("morning", .english)] {
+    let correct = Array(word)
+    let wrong = Array(engine.convert(word, to: language.opposite))
+    for split in 1..<correct.count {
+        for mixed in [String(wrong.prefix(split)) + String(correct.dropFirst(split)),
+                      String(correct.prefix(split)) + String(wrong.dropFirst(split))] {
+            expect(engine.correction(for: mixed)?.replacement, word, "Mixed source boundary: \(mixed)")
+            mixedCases += 1
+        }
+    }
+}
+print("Mixed-layout boundary cases: \(mixedCases) OK")
+
+func recoveredToken(_ document: String, suffix: String) -> String? {
+    let text = document as NSString
+    return KeyboardTokenRecovery.token(caret: text.length, typedSuffix: suffix) { range in
+        precondition(range.length <= 65, "Recovery must inspect at most 65 UTF-16 units")
+        return text.substring(with: range)
+    }
+}
+expect(recoveredToken("ktв", suffix: "в"), "ktв", "Recover prefix discarded on source change")
+expect(recoveredToken("Предыдущее слово ktв", suffix: "в"), "ktв", "Only recover current token")
+expect(recoveredToken("🙂\nheддщ", suffix: "дщ"), "heддщ", "UTF-16 and multiline recovery")
+assert(recoveredToken("ktв", suffix: "д") == nil, "Changed text must not be recovered")
+assert(recoveredToken("ktв", suffix: "") == nil, "No newly typed text means no recovery")
+assert(recoveredToken(String(repeating: "k", count: 70) + "в", suffix: "в") == nil,
+       "Do not recover truncated long words")
+assert(KeyboardTokenRecovery.token(caret: 3, typedSuffix: "в", read: { _ in nil }) == nil,
+       "Unavailable editor text must fail closed")
+let technical = recoveredToken("https://ktв", suffix: "в")!
+expectNil(engine.correction(for: technical), "Recovery must not strip a URL prefix")
+print("Mixed-layout recovery regressions: OK")
+
+func recoveredAddressWord(_ document: String, suffix: String) -> String? {
+    let text = document as NSString
+    return KeyboardTokenRecovery.token(caret: text.length, typedSuffix: suffix, scope: .completeAddressWord) { range in
+        assert(range.length <= 65)
+        return text.substring(with: range)
+    }
+}
+for suffix in ["trnjh", "htrnjh", "h", "lbhtrnjh"] {
+    let recovered = recoveredAddressWord("lbhtrnjh", suffix: suffix)
+    expect(recovered, "lbhtrnjh", "Safari: recover all letters after unavailable early events")
+    expect(recovered.flatMap { engine.correction(for: $0)?.replacement }, "директор", "Safari: correct whole word rather than suffix")
+}
+expect(recoveredAddressWord("предыдущий запрос lbhtrnjh", suffix: "trnjh"), "lbhtrnjh", "Safari: respect word boundary")
+for input in ["https://lbhtrnjh", "www.lbhtrnjh", "me@lbhtrnjh", "key=lbhtrnjh", "path/lbhtrnjh", "my_lbhtrnjh", "host:lbhtrnjh", String(repeating: "l", count: 70) + "trnjh"] {
+    assert(recoveredAddressWord(input, suffix: "trnjh") == nil, "Safari: preserve technical or truncated token")
+}
+assert(recoveredAddressWord("lbhtrnjh", suffix: "wrong") == nil, "Safari: changed suffix refuses recovery")
+assert(recoveredAddressWord("lbhtrnjh", suffix: "") == nil, "Safari: no recent typing refuses recovery")
+assert(KeyboardTokenRecovery.token(caret: 8, typedSuffix: "trnjh", scope: .completeAddressWord, read: { _ in nil }) == nil,
+       "Safari: unavailable read refuses correction, never falls back to partial suffix")
+assert(BrowserAddressFieldPolicy.requiresCompleteWord(bundleIdentifier: "com.apple.Safari", fieldIdentifier: "WEB_BROWSER_ADDRESS_AND_SEARCH_FIELD"))
+assert(!BrowserAddressFieldPolicy.requiresCompleteWord(bundleIdentifier: "com.apple.Safari", fieldIdentifier: "page-search"))
+assert(!BrowserAddressFieldPolicy.requiresCompleteWord(bundleIdentifier: "other.app", fieldIdentifier: "WEB_BROWSER_ADDRESS_AND_SEARCH_FIELD"))
+assert(!BrowserAddressFieldPolicy.requiresCompleteWord(bundleIdentifier: "com.apple.Safari", fieldIdentifier: nil))
+print("Safari address-word recovery regressions: OK")
+
 expect(engine.forcedConversion("ghtdtn")?.replacement, "превет",
        "Wrong-layout typo preserves spelling during explicit conversion")
 expectNil(engine.correction(for: "ghtdtn"),
@@ -374,8 +457,11 @@ final class SuffixEditorFixture: SuffixEditingBackend {
     var canReplace = true
     var contextIsCurrent = true
     var rejectWrite = false
+    var acknowledgeWithoutWriting = false
     var transformWrite: ((String) -> String)?
     var afterSelect: (() -> Void)?
+    var afterWrite: (() -> Void)?
+    var selections = 0
     var writes = 0
     init(_ value: String) { self.value = value; range = NSRange(location: value.utf16.count, length: 0) }
     func selection() -> NSRange? { range }
@@ -385,11 +471,14 @@ final class SuffixEditorFixture: SuffixEditingBackend {
         return string.substring(with: range)
     }
     func select(_ range: NSRange) -> Bool {
+        selections += 1
         self.range = range; afterSelect?(); return true
     }
     func replaceSelection(with text: String) -> Bool {
         guard !rejectWrite else { return false }
+        defer { afterWrite?() }
         writes += 1
+        if acknowledgeWithoutWriting { return true }
         let inserted = transformWrite?(text) ?? text
         value = (value as NSString).replacingCharacters(in: range, with: inserted)
         range.length = inserted.utf16.count
@@ -418,6 +507,25 @@ let rejectedEditor = SuffixEditorFixture("превет "); rejectedEditor.reject
 suffixRequire(SuffixReplacement.apply(VerifiedTextSuffix(text: "превет ", caret: 7), replacement: "привет ", using: rejectedEditor) == .failed && rejectedEditor.value == "превет " && rejectedEditor.range == NSRange(location: 7, length: 0), "failed write preserves text and restores caret")
 let corruptedEditor = SuffixEditorFixture("превет "); corruptedEditor.transformWrite = { _ in "пресет " }
 suffixRequire(SuffixReplacement.apply(VerifiedTextSuffix(text: "превет ", caret: 7), replacement: "привет ", using: corruptedEditor) == .unverified, "unexpected result never reports success")
+// Reproduced in WebKit: AX write succeeds but the DOM remains unchanged and
+// selected. A subsequent physical separator must not replace the whole word.
+let acknowledgedEditor = SuffixEditorFixture("lbhtrnjh")
+acknowledgedEditor.acknowledgeWithoutWriting = true
+suffixRequire(SuffixReplacement.apply(VerifiedTextSuffix(text: "lbhtrnjh", caret: 8), replacement: "директор", using: acknowledgedEditor) == .unverified, "acknowledged no-op is not success")
+suffixRequire(acknowledgedEditor.value == "lbhtrnjh" && acknowledgedEditor.range == NSRange(location: 8, length: 0), "unchanged original caret restored after acknowledged no-op")
+acknowledgedEditor.acknowledgeWithoutWriting = false
+_ = acknowledgedEditor.replaceSelection(with: " ")
+suffixRequire(acknowledgedEditor.value == "lbhtrnjh ", "next separator preserves original after acknowledged no-op")
+let focusLostAfterAcknowledgement = SuffixEditorFixture("lbhtrnjh")
+focusLostAfterAcknowledgement.acknowledgeWithoutWriting = true
+focusLostAfterAcknowledgement.afterWrite = { focusLostAfterAcknowledgement.contextIsCurrent = false }
+suffixRequire(SuffixReplacement.apply(VerifiedTextSuffix(text: "lbhtrnjh", caret: 8), replacement: "директор", using: focusLostAfterAcknowledgement) == .unverified, "focus loss after acknowledgement is not success")
+suffixRequire(focusLostAfterAcknowledgement.selections == 1, "caret recovery never touches a field after focus loss")
+let textChangedAfterAcknowledgement = SuffixEditorFixture("lbhtrnjh")
+textChangedAfterAcknowledgement.acknowledgeWithoutWriting = true
+textChangedAfterAcknowledgement.afterWrite = { textChangedAfterAcknowledgement.value = "new text" }
+suffixRequire(SuffixReplacement.apply(VerifiedTextSuffix(text: "lbhtrnjh", caret: 8), replacement: "директор", using: textChangedAfterAcknowledgement) == .unverified, "external text change after acknowledgement is not success")
+suffixRequire(textChangedAfterAcknowledgement.value == "new text" && textChangedAfterAcknowledgement.selections == 1, "caret recovery preserves externally changed text and selection")
 print("Verified suffix replacement regressions: OK")
 
 // Reproduced Caramba comparison cases, including mapped punctuation at edges.

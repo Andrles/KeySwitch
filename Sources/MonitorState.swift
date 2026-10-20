@@ -1,5 +1,14 @@
 import Foundation
 
+/// Diagnostic targets are fixed test applications, never an arbitrary bundle.
+enum RuntimeCheckTarget {
+    static func bundleIdentifier(arguments: [String] = CommandLine.arguments) -> String? {
+        if arguments.contains("--runtime-browser-check") { return "local.keyswitch.browserlab" }
+        if arguments.contains("--runtime-check") { return "com.apple.TextEdit" }
+        return nil
+    }
+}
+
 enum MonitorState: Equatable {
     case needsPermission
     case paused

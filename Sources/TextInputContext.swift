@@ -10,28 +10,38 @@ struct TextInputContext {
     let selection: NSRange
     let inputSourceID: String
 
-    static func current() -> TextInputContext? {
-        guard !IsSecureEventInputEnabled(),
-              let app = NSWorkspace.shared.frontmostApplication,
-              app.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return nil }
+    enum Unavailability: String {
+        case secureInput, noExternalApplication, focusedElement, secureField, selection, nonCaretSelection
+    }
+
+    static func current(onFailure: ((Unavailability) -> Void)? = nil) -> TextInputContext? {
+        guard !IsSecureEventInputEnabled() else { onFailure?(.secureInput); return nil }
+        guard let app = NSWorkspace.shared.frontmostApplication,
+              app.processIdentifier != ProcessInfo.processInfo.processIdentifier else {
+            onFailure?(.noExternalApplication); return nil
+        }
         let application = AXUIElementCreateApplication(app.processIdentifier)
         AXUIElementSetMessagingTimeout(application, 0.02)
         var focused: CFTypeRef?
         guard AXUIElementCopyAttributeValue(application, kAXFocusedUIElementAttribute as CFString,
                                            &focused) == .success,
-              let focused, CFGetTypeID(focused) == AXUIElementGetTypeID() else { return nil }
+              let focused, CFGetTypeID(focused) == AXUIElementGetTypeID() else {
+            onFailure?(.focusedElement); return nil
+        }
         let element = focused as! AXUIElement
         AXUIElementSetMessagingTimeout(element, 0.02)
         var subrole: CFTypeRef?
         AXUIElementCopyAttributeValue(element, kAXSubroleAttribute as CFString, &subrole)
-        guard (subrole as? String) != "AXSecureTextField" else { return nil }
+        guard (subrole as? String) != "AXSecureTextField" else { onFailure?(.secureField); return nil }
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString,
                                            &value) == .success,
-              let value, CFGetTypeID(value) == AXValueGetTypeID() else { return nil }
+              let value, CFGetTypeID(value) == AXValueGetTypeID() else { onFailure?(.selection); return nil }
         var range = CFRange()
-        guard AXValueGetValue(value as! AXValue, .cfRange, &range),
-              range.location >= 0, range.length == 0 else { return nil }
+        guard AXValueGetValue(value as! AXValue, .cfRange, &range), range.location >= 0 else {
+            onFailure?(.selection); return nil
+        }
+        guard range.length == 0 else { onFailure?(.nonCaretSelection); return nil }
         return TextInputContext(processID: app.processIdentifier, element: element,
                                 selection: NSRange(location: range.location, length: range.length),
                                 inputSourceID: InputSourceController.currentIdentifier())
@@ -40,6 +50,15 @@ struct TextInputContext {
     func isSameField(as other: TextInputContext) -> Bool {
         processID == other.processID && CFEqual(element, other.element)
             && inputSourceID == other.inputSourceID
+    }
+
+    var requiresCompleteAddressWord: Bool {
+        let bundle = NSRunningApplication(processIdentifier: processID)?.bundleIdentifier
+        guard bundle == "com.apple.Safari" else { return false }
+        var identifier: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXIdentifierAttribute as CFString, &identifier) == .success else { return false }
+        return BrowserAddressFieldPolicy.requiresCompleteWord(bundleIdentifier: bundle,
+            fieldIdentifier: identifier as? String)
     }
 
     var screen: NSScreen? {

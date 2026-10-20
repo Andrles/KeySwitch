@@ -29,6 +29,7 @@ final class KeyboardMonitor {
     private var lastCorrection: PendingEdit?
     private var pendingSuggestion: PendingEdit?
     private let injectedMarker: Int64 = 0x5241534B
+    private var inputDiagnosticSequence = 0
 
     var onManualCommand: ((ManualCommand) -> Bool)?
     var onCorrection: ((Language) -> Void)?
@@ -142,8 +143,8 @@ final class KeyboardMonitor {
             return Unmanaged.passUnretained(event)
         }
         // Diagnostic runs must never edit unrelated apps or consume their shortcuts.
-        if CommandLine.arguments.contains("--runtime-check"),
-           NSWorkspace.shared.frontmostApplication?.bundleIdentifier != "com.apple.TextEdit" {
+        if let target = RuntimeCheckTarget.bundleIdentifier(),
+           NSWorkspace.shared.frontmostApplication?.bundleIdentifier != target {
             invalidateContext()
             return Unmanaged.passUnretained(event)
         }
@@ -181,13 +182,29 @@ final class KeyboardMonitor {
             }
             return nil
         }
-        guard preferences.enabled, !frontmostAppIsExcluded(),
-              let context = TextInputContext.current() else {
+        let diagnosesKey = type == .keyDown && CommandLine.arguments.contains("--input-diagnostics")
+        let diagnosesSpace = diagnosesKey && event.getIntegerValueField(.keyboardEventKeycode) == 49
+        if diagnosesSpace { inputBoundaryDiagnostic("received") }
+        guard preferences.enabled else {
+            if diagnosesSpace { inputBoundaryDiagnostic("disabled") }
+            invalidateContext()
+            return Unmanaged.passUnretained(event)
+        }
+        guard !frontmostAppIsExcluded() else {
+            if diagnosesSpace { inputBoundaryDiagnostic("excluded") }
+            invalidateContext()
+            return Unmanaged.passUnretained(event)
+        }
+        let contextFailure: ((TextInputContext.Unavailability) -> Void)? = diagnosesSpace
+            ? { [weak self] reason in self?.inputBoundaryDiagnostic("context_" + reason.rawValue) } : nil
+        guard let context = TextInputContext.current(onFailure: contextFailure) else {
+            if diagnosesKey { inputBoundaryDiagnostic("key_context_unavailable") }
             invalidateContext()
             return Unmanaged.passUnretained(event)
         }
 
         if let wordContext, !wordContext.isSameField(as: context) {
+            if diagnosesKey { inputBoundaryDiagnostic("field_or_source_changed") }
             invalidateContext()
         }
         if type == .flagsChanged {
@@ -201,6 +218,7 @@ final class KeyboardMonitor {
         pendingSuggestion = nil
         onFeedbackInvalidated?()
         if let expectedCaret, context.selection.location != expectedCaret {
+            if diagnosesKey { inputBoundaryDiagnostic("caret_changed") }
             invalidateContext()
         }
 
@@ -256,13 +274,26 @@ final class KeyboardMonitor {
             currentWord = ""; wordContext = nil; expectedCaret = nil
             return nil
         }
-        if preferences.profile(for: bundleID).layout, let correction = layoutCorrection(for: currentWord),
-           replaceTypedText(correction, boundaryEvent: event, feature: .layout) {
-            currentWord = ""
-            wordContext = nil
-            expectedCaret = nil
-            return nil
+        if diagnosesSpace {
+            // The supplied reproduction word is the only explicitly classified
+            // content. Other input is represented solely by a bounded length.
+            let tokenClass = currentWord.lowercased() == "lbhtrnjh" ? "test_full" :
+                (!currentWord.isEmpty && "lbhtrnjh".hasSuffix(currentWord.lowercased()) ? "test_suffix" : "other")
+            inputBoundaryDiagnostic("token_" + tokenClass + "_units_" + String(currentWord.utf16.count))
         }
+        if preferences.profile(for: bundleID).layout {
+            if let correction = boundaryLayoutCorrection(in: context) {
+                if replaceTypedText(correction, boundaryEvent: event, feature: .layout) {
+                    currentWord = ""
+                    wordContext = nil
+                    expectedCaret = nil
+                    return nil
+                }
+                if diagnosesSpace { inputBoundaryDiagnostic("replacement_preflight_refused") }
+            } else if diagnosesSpace {
+                inputBoundaryDiagnostic(currentWord.isEmpty ? "empty_token" : "no_layout_candidate")
+            }
+        } else if diagnosesSpace { inputBoundaryDiagnostic("layout_disabled") }
 
         let spellingParts = TextToken(currentWord)
         let spellingMode = preferences.spellingMode
@@ -423,6 +454,7 @@ final class KeyboardMonitor {
         }
         let oldLanguage = InputSourceController.currentLanguage()
         let boundary = boundaryEvent.map(unicodeString(from:)) ?? ""
+        let diagnosticID = beginInputDiagnostic()
         // Enter/Tab changes editor context, so only plain separators support undo.
         let canUndo = !boundary.contains("\n") && !boundary.contains("\r") && !boundary.contains("\t")
         let plan = KeyboardReplacementPlan(correction: correction, replayBoundary: boundaryEvent != nil)
@@ -453,10 +485,67 @@ final class KeyboardMonitor {
             event.setIntegerValueField(.eventSourceUserData, value: injectedMarker)
             event.postToPid(context.processID)
         }
+        inputDiagnostic(diagnosticID, stage: "posted")
         if !preserveInputSource { selectInputLanguage(correction.language) }
+        if diagnosticID != nil {
+            let stage = preserveInputSource ? "source_preserved" :
+                (InputSourceController.currentLanguage() == correction.language ? "source_confirmed" : "source_unconfirmed")
+            inputDiagnostic(diagnosticID, stage: stage)
+        }
         recordCorrection(correction, context: context, boundary: boundary, oldLanguage: oldLanguage,
                          keepUndo: keepUndo, canUndo: canUndo, preserveInputSource: preserveInputSource)
+        observePostedReplacement(correction, boundary: boundary, context: context, diagnosticID: diagnosticID)
         return true
+    }
+
+    // Opt-in, read-only receipts for the existing event-based path. These do
+    // not repair/replay text or change the source. Never log arbitrary words.
+    // Fixed reason labels only: never include the token or field contents.
+    private func inputBoundaryDiagnostic(_ stage: String) {
+        guard CommandLine.arguments.contains("--input-diagnostics") else { return }
+        print("KeySwitch input boundary: stage=\(stage)")
+        fflush(stdout)
+    }
+
+    private func beginInputDiagnostic() -> Int? {
+        guard CommandLine.arguments.contains("--input-diagnostics") else { return nil }
+        inputDiagnosticSequence += 1
+        inputDiagnostic(inputDiagnosticSequence, stage: "preflight")
+        return inputDiagnosticSequence
+    }
+
+    private func inputDiagnostic(_ id: Int?, stage: String) {
+        guard let id else { return }
+        print("KeySwitch input receipt: id=\(id) stage=\(stage)")
+        fflush(stdout)
+    }
+
+    private func observePostedReplacement(_ correction: Correction, boundary: String,
+                                           context: TextInputContext, diagnosticID: Int?) {
+        guard diagnosticID != nil else { return }
+        let revision = manualInputRevision
+        let expectedContext = TextInputContext(processID: context.processID, element: context.element,
+            selection: context.selection, inputSourceID: InputSourceController.currentIdentifier())
+        let expected = VerifiedTextSuffix(text: correction.replacement + boundary,
+            caret: context.selection.location - correction.original.utf16.count
+                + correction.replacement.utf16.count + boundary.utf16.count)
+        for delay in [0.02, 0.08, 0.2] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                guard let self else { return }
+                let phase = "readback_\(Int(delay * 1000))ms"
+                guard self.manualInputRevision == revision else {
+                    self.inputDiagnostic(diagnosticID, stage: phase + "_skipped_new_input")
+                    return
+                }
+                guard self.isRunning, self.preferences.enabled, !self.frontmostAppIsExcluded(),
+                      let fresh = TextInputContext.current(), fresh.isSameField(as: expectedContext) else {
+                    self.inputDiagnostic(diagnosticID, stage: phase + "_skipped_context")
+                    return
+                }
+                self.inputDiagnostic(diagnosticID,
+                    stage: phase + (fresh.verifies(expected) ? "_matches" : "_differs"))
+            }
+        }
     }
 
     private func selectInputLanguage(_ language: Language) {
@@ -508,7 +597,7 @@ final class KeyboardMonitor {
     }
 
     private func popupDiagnostic(_ status: String) {
-        guard CommandLine.arguments.contains("--runtime-check") else { return }
+        guard RuntimeCheckTarget.bundleIdentifier() != nil else { return }
         print("KeySwitch popup diagnostic: " + status)
         fflush(stdout)
     }
@@ -544,6 +633,31 @@ final class KeyboardMonitor {
     private func frontmostAppIsExcluded() -> Bool {
         guard let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier else { return false }
         return preferences.excludesApplication(bundleID)
+    }
+
+    private func boundaryLayoutCorrection(in context: TextInputContext) -> Correction? {
+        guard context.requiresCompleteAddressWord else {
+            return layoutCorrection(for: currentWord) ?? recoveredMixedCorrection(in: context)
+        }
+        // Safari may temporarily deny AX access while typing. Only the complete
+        // current token may be corrected: a recognized suffix such as “ректор”
+        // must never produce a partial replacement inside “директор”.
+        guard let wordContext, context.isSameField(as: wordContext),
+              let token = KeyboardTokenRecovery.token(caret: context.selection.location,
+                  typedSuffix: currentWord, scope: .completeAddressWord,
+                  read: { context.text(in: $0) }) else {
+            inputBoundaryDiagnostic("address_word_unavailable")
+            return nil
+        }
+        inputBoundaryDiagnostic("address_word_verified")
+        return layoutCorrection(for: token)
+    }
+
+    private func recoveredMixedCorrection(in context: TextInputContext) -> Correction? {
+        guard let wordContext, context.isSameField(as: wordContext),
+              let token = KeyboardTokenRecovery.token(caret: context.selection.location,
+                  typedSuffix: currentWord, read: { context.text(in: $0) }) else { return nil }
+        return layoutCorrection(for: token)
     }
 
     private func layoutCorrection(for token: String) -> Correction? {

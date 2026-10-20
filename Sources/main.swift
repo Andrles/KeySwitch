@@ -24,7 +24,7 @@ if !diagnosticsWithoutMonitoring {
         let message = isDuplicate
             ? "KeySwitch уже запущен"
             : "Не удалось безопасно запустить KeySwitch"
-        if CommandLine.arguments.contains("--runtime-check") {
+        if RuntimeCheckTarget.bundleIdentifier() != nil {
             print("KeySwitch instance check: \(isDuplicate ? "already-running" : "unavailable")")
             exit(isDuplicate ? 2 : 3)
         }

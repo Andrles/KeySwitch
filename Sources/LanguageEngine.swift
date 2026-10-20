@@ -188,6 +188,7 @@ struct LanguageEngine {
             return Correction(original: word, replacement: tokenParts.wrapping(replacement), language: language)
         }
         if learned.contains(key) || isKnownWord(protectedCore) { return nil }
+        if let mixed = mixedLayoutCorrection(for: word) { return mixed }
         if let converted = forcedConversion(word), learned.contains(TextToken(converted.replacement).word.lowercased()) {
             return converted
         }
@@ -218,6 +219,31 @@ struct LanguageEngine {
             }
         }
         return best?.correction
+    }
+
+    /// Repair only an exact, unambiguous word after input switched mid-token.
+    /// Never combine this with fuzzy spelling or synchronous system guesses.
+    private func mixedLayoutCorrection(for token: String) -> Correction? {
+        let parts = TextToken(token)
+        let word = parts.word
+        guard word.count >= 3, word.count <= 64,
+              word.unicodeScalars.allSatisfy({
+                  (65...90).contains($0.value) || (97...122).contains($0.value) ||
+                  (0x0410...0x044F).contains($0.value) || $0.value == 0x0401 || $0.value == 0x0451
+              }),
+              word.unicodeScalars.contains(where: { (65...90).contains($0.value) || (97...122).contains($0.value) }),
+              word.unicodeScalars.contains(where: { (0x0410...0x044F).contains($0.value) || $0.value == 0x0401 || $0.value == 0x0451 }),
+              !TextToken.hasProtectedCase(word) || word.allSatisfy(\.isUppercase) else { return nil }
+        let candidates = [Language.russian, .english].compactMap { language -> Correction? in
+            let mapped = convert(word, to: language)
+            let key = mapped.lowercased()
+            let vocabulary = language == .russian ? Self.russianWords : Self.englishWords
+            let names = language == .russian ? Self.russianNames : Self.englishNames
+            guard vocabulary.contains(key) || LocalLexicon.contains(key) ||
+                    (word.first?.isUppercase == true && names.contains(key)) else { return nil }
+            return Correction(original: token, replacement: parts.wrapping(mapped), language: language)
+        }
+        return candidates.count == 1 ? candidates[0] : nil
     }
 
     private func correctionForBareWord(_ word: String,

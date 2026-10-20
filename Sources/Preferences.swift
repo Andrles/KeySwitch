@@ -47,12 +47,12 @@ enum PreferenceKey {
 
 final class Preferences {
     static let shared: Preferences = {
-        if CommandLine.arguments.contains("--ui-preview") || CommandLine.arguments.contains("--launch-check") || CommandLine.arguments.contains("--runtime-check") {
+        if CommandLine.arguments.contains("--ui-preview") || CommandLine.arguments.contains("--launch-check") || RuntimeCheckTarget.bundleIdentifier() != nil {
             let name = "local.keyswitch.preview.\(ProcessInfo.processInfo.processIdentifier)"
             let defaults = UserDefaults(suiteName: name)!
             defaults.removePersistentDomain(forName: name)
             let preferences = Preferences(defaults: defaults)
-            if CommandLine.arguments.contains("--runtime-check") {
+            if RuntimeCheckTarget.bundleIdentifier() != nil {
                 preferences.automaticallyChecksForUpdates = false
                 preferences.playSound = false
                 preferences.spellingMode = .suggestions

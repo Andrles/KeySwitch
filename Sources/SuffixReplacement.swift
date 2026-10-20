@@ -38,6 +38,10 @@ enum SuffixReplacement {
         let end = NSRange(location: NSMaxRange(updated), length: 0)
         guard backend.contextIsCurrent, backend.text(in: updated) == replacement,
               let selection = backend.selection(), selection == updated || selection == end else {
+            // Some WebKit fields acknowledge AXSelectedText but leave the
+            // original word selected. The next physical key would erase it.
+            // Restore only an exact, unchanged original in the same field.
+            restoreCaret(caret, selectedRange: range, original: suffix.text, using: backend)
             return .unverified
         }
         if selection != end, !backend.select(end) { return .unverified }

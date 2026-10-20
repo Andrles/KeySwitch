@@ -61,39 +61,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSPopo
                 self.refreshMenu()
                 presentationCheckPassed = presentationCheckPassed && NSApp.activationPolicy() == .accessory
                 self.hideSettings()
-                self.toggleQuickSettings()
-                presentationCheckPassed = presentationCheckPassed && self.quickPopover.isShown
-                presentationCheckPassed = presentationCheckPassed && self.outsideClickMonitor != nil && self.localClickMonitor != nil
-                print("Popover click check: shown=\(self.quickPopover.isShown) global=\(self.outsideClickMonitor != nil) local=\(self.localClickMonitor != nil)")
-                if let button = self.statusItem.button, let window = button.window {
-                    let icon = window.convertToScreen(button.convert(button.bounds, to: nil))
-                    self.dismissQuickSettingsIfOutside(NSPoint(x: icon.midX, y: icon.midY))
-                    print("Popover icon check: shown=\(self.quickPopover.isShown)")
+                // A freshly extracted bundle may need another run-loop turn for
+                // its native status item. Bound retries; a persistent failure still fails.
+                func checkPopover(attempt: Int) {
+                    self.toggleQuickSettings()
+                    if !self.quickPopover.isShown && attempt < 20 {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            checkPopover(attempt: attempt + 1)
+                        }
+                        return
+                    }
                     presentationCheckPassed = presentationCheckPassed && self.quickPopover.isShown
+                    presentationCheckPassed = presentationCheckPassed && self.outsideClickMonitor != nil && self.localClickMonitor != nil
+                    print("Popover click check: shown=\(self.quickPopover.isShown) global=\(self.outsideClickMonitor != nil) local=\(self.localClickMonitor != nil)")
+                    if let button = self.statusItem.button, let window = button.window {
+                        let icon = window.convertToScreen(button.convert(button.bounds, to: nil))
+                        self.dismissQuickSettingsIfOutside(NSPoint(x: icon.midX, y: icon.midY))
+                        print("Popover icon check: shown=\(self.quickPopover.isShown)")
+                        presentationCheckPassed = presentationCheckPassed && self.quickPopover.isShown
+                    }
+                    if let window = self.quickSettings.view.window {
+                        let inside = NSPoint(x: window.frame.midX, y: window.frame.midY)
+                        self.dismissQuickSettingsIfOutside(inside)
+                        print("Popover inside check: shown=\(self.quickPopover.isShown)")
+                        presentationCheckPassed = presentationCheckPassed && self.quickPopover.isShown
+                        self.dismissQuickSettingsIfOutside(NSPoint(x: window.frame.minX - 20, y: window.frame.minY - 20))
+                        print("Popover outside check: shown=\(self.quickPopover.isShown) global=\(self.outsideClickMonitor != nil) local=\(self.localClickMonitor != nil)")
+                    } else { presentationCheckPassed = false }
+                    guard let menu = self.contextMenu,
+                          let index = menu.items.firstIndex(where: { $0.action == #selector(AppDelegate.openSettings) }) else { exit(1) }
+                    menu.performActionForItem(at: index)
+                    // NSPopover remains shown until its native close animation finishes.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
+                        let visible = self?.settingsController?.window?.isVisible == true
+                        let menuBarOnly = NSApp.activationPolicy() == .accessory
+                        let outsideClosed = self?.quickPopover.isShown == false &&
+                            self?.outsideClickMonitor == nil && self?.localClickMonitor == nil
+                        presentationCheckPassed = presentationCheckPassed && outsideClosed
+                        print("Popover close completion: closedAndMonitorsRemoved=\(outsideClosed)")
+                        print("KeySwitch launch check: delegate=\(self != nil) window=\(self?.settingsController?.window != nil) windowVisible=\(visible) menuBarOnly=\(menuBarOnly) dockToggle=\(presentationCheckPassed)")
+                        fflush(stdout)
+                        exit(visible && menuBarOnly && presentationCheckPassed ? 0 : 1)
+                    }
                 }
-                if let window = self.quickSettings.view.window {
-                    let inside = NSPoint(x: window.frame.midX, y: window.frame.midY)
-                    self.dismissQuickSettingsIfOutside(inside)
-                    print("Popover inside check: shown=\(self.quickPopover.isShown)")
-                    presentationCheckPassed = presentationCheckPassed && self.quickPopover.isShown
-                    self.dismissQuickSettingsIfOutside(NSPoint(x: window.frame.minX - 20, y: window.frame.minY - 20))
-                    print("Popover outside check: shown=\(self.quickPopover.isShown) global=\(self.outsideClickMonitor != nil) local=\(self.localClickMonitor != nil)")
-                } else { presentationCheckPassed = false }
-                guard let menu = self.contextMenu,
-                      let index = menu.items.firstIndex(where: { $0.action == #selector(AppDelegate.openSettings) }) else { return }
-                menu.performActionForItem(at: index)
-            }
-            // NSPopover remains shown until its native close animation finishes.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
-                let visible = self?.settingsController?.window?.isVisible == true
-                let menuBarOnly = NSApp.activationPolicy() == .accessory
-                let outsideClosed = self?.quickPopover.isShown == false &&
-                    self?.outsideClickMonitor == nil && self?.localClickMonitor == nil
-                presentationCheckPassed = presentationCheckPassed && outsideClosed
-                print("Popover close completion: closedAndMonitorsRemoved=\(outsideClosed)")
-                print("KeySwitch launch check: delegate=\(self != nil) window=\(self?.settingsController?.window != nil) windowVisible=\(visible) menuBarOnly=\(menuBarOnly) dockToggle=\(presentationCheckPassed)")
-                fflush(stdout)
-                exit(visible && menuBarOnly && presentationCheckPassed ? 0 : 1)
+                checkPopover(attempt: 0)
             }
             return
         }
@@ -151,8 +162,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSPopo
             monitor.start()
         }
         lastMonitorRunning = monitor.isRunning
-        if CommandLine.arguments.contains("--runtime-check") {
-            print("KeySwitch runtime check: trusted=\(monitor.isTrusted) running=\(monitor.isRunning) target=TextEdit isolatedPreferences=true")
+        if let target = RuntimeCheckTarget.bundleIdentifier() {
+            print("KeySwitch runtime check: trusted=\(monitor.isTrusted) running=\(monitor.isRunning) target=\(target) isolatedPreferences=true")
             fflush(stdout)
         }
         monitor.onPermissionChanged = { [weak self] _ in

@@ -35,7 +35,7 @@ private enum SettingsSection: Int, CaseIterable {
         switch self {
         case .general: return "Раскладка"
         case .spelling: return "Опечатки"
-        case .exclusions: return "Исключения"
+        case .exclusions: return "Правила приложений"
         case .permissions: return "Доступ macOS"
         case .appearance: return "Вид и запуск"
         case .dictionary: return "Мой словарь"
@@ -366,12 +366,13 @@ final class SettingsWindowController: NSWindowController,
         let controls = NSStackView()
         controls.orientation = .horizontal
         controls.alignment = .centerY
-        controls.addArrangedSubview(label("Исправлять раскладку", size: 13, weight: .medium))
+        controls.addArrangedSubview(label("Автоисправления", size: 13, weight: .medium))
         controls.addArrangedSubview(spacer())
-        let enabled = switchButton(accessibilityLabel: "Исправлять раскладку", state: preferences.enabled, action: #selector(toggleEnabled(_:)))
+        let enabled = switchButton(accessibilityLabel: "Автоисправления", state: preferences.enabled, action: #selector(toggleEnabled(_:)))
         enabledControl = enabled
         controls.addArrangedSubview(enabled)
         status.stack.addArrangedSubview(controls)
+        status.stack.addArrangedSubview(label("Общая пауза для раскладки, опечаток и сокращений. Настройки каждой функции сохраняются.", size: 12, color: UIStyle.secondaryText, wrapping: true))
         if !monitor.isTrusted {
             status.stack.addArrangedSubview(NSButton(title: "Разрешить исправление…", target: self, action: #selector(openPermissionsSection)))
         }
@@ -454,8 +455,8 @@ final class SettingsWindowController: NSWindowController,
 
     private func buildExclusionsSection() -> NSView {
         let (view, stack) = sectionCanvas(
-            title: "Исключения",
-            subtitle: "Выберите приложения, в которых не нужны автоматические исправления."
+            title: "Правила приложений",
+            subtitle: "Отключите отдельные автоматические функции или полностью исключите приложение, включая ручные команды."
         )
         let tableCard = card(height: 360)
         let scroll = NSScrollView()
@@ -688,6 +689,7 @@ final class SettingsWindowController: NSWindowController,
             action: #selector(toggleAutomaticUpdates(_:))
         )
         automaticUpdatesSwitch = auto
+        actionRow.addArrangedSubview(label("Проверять обновления автоматически", size: 13))
         actionRow.addArrangedSubview(auto)
         actionRow.addArrangedSubview(spacer())
         let check = NSButton(title: "Проверить обновления",
@@ -695,8 +697,8 @@ final class SettingsWindowController: NSWindowController,
                              action: #selector(checkUpdates(_:)))
         check.bezelStyle = .rounded
         updateActionButton = check
-        actionRow.addArrangedSubview(check)
         update.stack.addArrangedSubview(actionRow)
+        update.stack.addArrangedSubview(check)
         stack.addArrangedSubview(update.view)
 
         let links = card(height: 90)

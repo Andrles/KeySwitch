@@ -43,13 +43,25 @@ final class PopupTestDelegate: NSObject, NSApplicationDelegate {
                     require(frame.minX >= -1 && frame.maxX <= window.contentView!.bounds.width + 1,
                             "horizontal clipping in settings section \(section): \(frame)")
                 }
+                if section == 5 {
+                    require(views.compactMap { $0 as? NSTextField }.contains { $0.stringValue == "Проверять обновления автоматически" }, "automatic updates need a visible label")
+                }
                 if section == 0 {
+                    require(views.compactMap { $0 as? NSTextField }.contains { $0.stringValue == "Автоисправления" }, "global pause must name all automatic features")
                     let control = views.compactMap { $0 as? NSSwitch }.first!
                     let original = preferences.enabled
                     control.state = original ? .off : .on
                     require(NSApp.sendAction(control.action!, to: control.target, from: control), "native switch action")
                     require(preferences.enabled != original, "native switch must update correction preference")
                     preferences.enabled = original
+                }
+                if [0, 2, 5].contains(section), let content = window.contentView,
+                   let image = content.bitmapImageRepForCachingDisplay(in: content.bounds) {
+                    content.cacheDisplay(in: content.bounds, to: image)
+                    let theme = appearance == .aqua ? "light" : "dark"
+                    if let png = image.representation(using: .png, properties: [:]) {
+                        try? png.write(to: URL(fileURLWithPath: FileManager.default.currentDirectoryPath + "/build/tests/settings-\(section)-\(theme).png"))
+                    }
                 }
                 window.orderOut(nil)
             }
@@ -66,10 +78,14 @@ final class PopupTestDelegate: NSObject, NSApplicationDelegate {
             }
         }
         let quick = QuickSettingsController()
-        var toggled = false, settingsOpened = false
+        var toggled = false, settingsOpened = false, recovered = false, openedMore = false
         quick.onToggle = { toggled = true }
         quick.onSettings = { settingsOpened = true }
+        quick.onPermission = { recovered = true }
+        quick.onRetry = { recovered = true }
+        quick.onMore = { openedMore = true }
         for state in [MonitorState.ready, .paused, .needsPermission, .failed] {
+            toggled = false; settingsOpened = false; recovered = false; openedMore = false
             quick.refresh(state: state, enabled: state != .paused)
             require(quick.preferredContentSize.width == 320 && quick.preferredContentSize.height > 100, "quick settings size")
             quick.view.setFrameSize(quick.preferredContentSize)
@@ -80,13 +96,28 @@ final class PopupTestDelegate: NSObject, NSApplicationDelegate {
                 require(quick.view.bounds.insetBy(dx: -1, dy: -1).contains(frame), "quick settings control clipped: \(frame)")
             }
             require(views.compactMap { $0 as? NSTextField }.contains { $0.stringValue == state.title }, "truthful quick state")
+            let recoveryTitle = state == .failed ? "Повторить запуск" : "Открыть доступ macOS…"
+            let recovery = views.compactMap { $0 as? NSButton }.first { $0.title == recoveryTitle }
+            require(recovery != nil, "recovery button title must match the failure")
+            require(recovery!.isHidden == (state != .failed && state != .needsPermission), "recovery action visibility")
+            if !recovery!.isHidden { recovery!.performClick(nil); require(recovered, "recovery action callback") }
+            views.compactMap { $0 as? NSButton }.first { $0.title == "Ещё действия…" }!.performClick(nil)
+            require(openedMore, "more action callback")
             let toggle = views.compactMap { $0 as? NSSwitch }.first!
             require(toggle.state == (state == .paused ? .off : .on), "quick switch state")
             NSApp.sendAction(toggle.action!, to: toggle.target, from: toggle)
             views.compactMap { $0 as? NSButton }.first { $0.title == "Открыть настройки…" }!.performClick(nil)
+            require(toggled && settingsOpened, "quick actions must work in every state")
         }
         require(toggled && settingsOpened, "quick actions")
         print("Glass regressions: OK (top-right positioning, negative display coordinates, resized feedback, quick settings states/actions)")
+        func checkPopupContent() {
+            let panel = NSApp.windows.first { $0 is NSPanel && $0.isVisible }!
+            panel.contentView!.layoutSubtreeIfNeeded()
+            for control in descendants(panel.contentView!) where !control.isHiddenOrHasHiddenAncestor && (control is NSTextField || control is NSButton) {
+                require(panel.contentView!.bounds.insetBy(dx: -1, dy: -1).contains(control.convert(control.bounds, to: panel.contentView)), "popup feedback state must fit")
+            }
+        }
         var ignored = "", undone = "", dismissed = false
         indicator.onApply = { self.indicator.showResult(applied: false) }
         indicator.onIgnore = { ignored = $0 }
@@ -95,7 +126,8 @@ final class PopupTestDelegate: NSObject, NSApplicationDelegate {
         for appearance in [NSAppearance.Name.aqua, .darkAqua] {
             NSApp.appearance = NSAppearance(named: appearance)
             for pair in [("превет", "привет"), ("электроэнцефалографическй", "электроэнцефалографический"),
-                         ("antidisestablishmentarianim", "antidisestablishmentarianism")] {
+                         ("antidisestablishmentarianim", "antidisestablishmentarianism"),
+                         ("Rindfleischetikettierungsüberwachungsaufgabenübertragungsgeset", "Rindfleischetikettierungsüberwachungsaufgabenübertragungsgesetz")] {
                 indicator.show(word: pair.0, suggestion: pair.1)
                 let panel = NSApp.windows.first { $0 is NSPanel && $0.isVisible }!
                 panel.contentView!.layoutSubtreeIfNeeded()
@@ -116,16 +148,19 @@ final class PopupTestDelegate: NSObject, NSApplicationDelegate {
                 let replace = views.compactMap { $0 as? NSButton }.first { $0.title == "Заменить" }!
                 replace.performClick(nil)
                 require(indicator.isVisible, "failed replacement must stay visible")
+                checkPopupContent()
                 require(views.compactMap { $0 as? NSTextField }.contains { $0.stringValue == "Не удалось подтвердить замену" }, "failure text missing")
                 indicator.show(word: pair.0, suggestion: pair.1)
                 let more = views.compactMap { $0 as? NSPopUpButton }.first!
                 let ignoreIndex = more.menu!.items.firstIndex { $0.title == "Не предлагать это слово" }!
                 more.menu!.performActionForItem(at: ignoreIndex)
                 require(ignored == pair.0 && indicator.isVisible, "ignore confirmation")
+                checkPopupContent()
                 let undo = views.compactMap { $0 as? NSButton }.first { $0.title == "Отменить исключение" }!
                 require(!undo.isHidden, "undo missing")
                 undo.performClick(nil)
                 require(undone == pair.0 && undo.isHidden, "undo callback/state")
+                checkPopupContent()
                 indicator.show(word: pair.0, suggestion: pair.1)
                 views.compactMap { $0 as? NSButton }.first { $0.title == "Пропустить" }!.performClick(nil)
                 require(dismissed && !indicator.isVisible, "skip must close")
@@ -157,6 +192,37 @@ final class PopupTestDelegate: NSObject, NSApplicationDelegate {
         require(edit.isEnabled && remove.isEnabled, "selection enables both actions")
         table.deselectAll(nil)
         require(!edit.isEnabled && !remove.isEnabled, "deselection disables both actions")
+        preferences.learnedWords = ["аэрогель"]
+        preferences.wordReplacements = ["превет": "привет"]
+        var undoTime: TimeInterval = 100
+        let undoEditor = DictionaryEditor(preferences: preferences, now: { undoTime })
+        let undoViews = descendants(undoEditor)
+        let undoTable = undoViews.compactMap { $0 as? NSTableView }.first!
+        let deleteRule = undoViews.compactMap { $0 as? NSButton }.first { $0.title == "Удалить выбранное" }!
+        let undoDelete = undoViews.compactMap { $0 as? NSButton }.first { $0.title == "Отменить удаление" }
+        require(undoDelete != nil, "deleted dictionary rules need undo")
+        undoTable.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+        deleteRule.performClick(nil)
+        require(!preferences.learnedWords.contains("аэрогель") && !undoDelete!.isHidden, "delete offers undo")
+        preferences.learnedWords.insert("нейросеть")
+        undoDelete!.performClick(nil)
+        require(preferences.learnedWords == ["аэрогель", "нейросеть"], "undo preserves later unrelated edits")
+        func replacementRow() -> Int {
+            (0..<undoTable.numberOfRows).first {
+                (undoEditor.tableView(undoTable, viewFor: undoTable.tableColumn(withIdentifier: NSUserInterfaceItemIdentifier("word")), row: $0) as? NSTextField)?.stringValue == "превет"
+            }!
+        }
+        undoTable.selectRowIndexes(IndexSet(integer: replacementRow()), byExtendingSelection: false)
+        deleteRule.performClick(nil)
+        preferences.wordReplacements["превет"] = "пресет"
+        undoDelete!.performClick(nil)
+        require(preferences.wordReplacements["превет"] == "пресет", "undo must not overwrite a new replacement")
+        undoTable.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+        deleteRule.performClick(nil)
+        let afterDelete = preferences.learnedWords
+        undoTime += 16
+        undoDelete!.performClick(nil)
+        require(preferences.learnedWords == afterDelete, "expired undo must not change dictionary")
         print("PopupUI regressions: OK (light/dark, RU/EN long content, failure, ignore/undo, skip, dictionary selection)")
         fflush(stdout)
         if CommandLine.arguments.contains("--interactive") {

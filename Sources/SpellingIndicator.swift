@@ -89,7 +89,7 @@ final class SpellingIndicator: NSObject, NSMenuDelegate {
         actions.isHidden = false; undoButton.isHidden = true
         hint.stringValue = Preferences.shared.shiftLayoutOnly
             ? "Esc — пропустить. Заменить можно до следующего ввода."
-            : "⇧ ⇧ — заменить · Esc — пропустить"
+            : "⇧ ⇧ — заменить · Esc — пропустить. До следующего ввода."
         label.stringValue = "\(word) → \(suggestion)"
         layout()
         announce(label.stringValue + ". " + hint.stringValue)

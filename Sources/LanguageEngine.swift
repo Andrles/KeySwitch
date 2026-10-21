@@ -187,7 +187,9 @@ struct LanguageEngine {
            let language = scriptLanguage(replacement) {
             return Correction(original: word, replacement: tokenParts.wrapping(replacement), language: language)
         }
-        if learned.contains(key) || isKnownWord(protectedCore) { return nil }
+        if learned.contains(key) { return nil }
+        if let punctuation = wrappedPunctuationLayoutCorrection(for: word) { return punctuation }
+        if isKnownWord(protectedCore) { return nil }
         if let mixed = mixedLayoutCorrection(for: word) { return mixed }
         if let converted = forcedConversion(word), learned.contains(TextToken(converted.replacement).word.lowercased()) {
             return converted
@@ -203,7 +205,7 @@ struct LanguageEngine {
             for right in 0...rightCount where left + right < characters.count {
                 if trailingDots >= 2 && right > 0 && right < trailingDots { continue }
                 let core = String(characters[left..<(characters.count - right)])
-                guard let candidate = correctionForBareWord(core, ignored: ignored) else { continue }
+                guard let candidate = punctuationLayoutCorrection(for: core) ?? correctionForBareWord(core, ignored: ignored) else { continue }
                 let target = candidate.replacement.lowercased()
                 let local = LocalLexicon.contains(target) || Self.englishWords.contains(target) ||
                     Self.russianWords.contains(target) || Self.englishNames.contains(target) ||
@@ -219,6 +221,41 @@ struct LanguageEngine {
             }
         }
         return best?.correction
+    }
+
+    private func wrappedPunctuationLayoutCorrection(for word: String) -> Correction? {
+        let characters = Array(word)
+        let punctuation = "`[];',.~{}:\"<>«»„“”‘’()!?…"
+        let leading = characters.prefix { punctuation.contains($0) }.count
+        let trailing = characters.reversed().prefix { punctuation.contains($0) }.count
+        for removed in 0...(leading + trailing) {
+            for left in 0...min(leading, removed) {
+                let right = removed - left
+                guard right <= trailing, left + right < characters.count else { continue }
+                let core = String(characters[left..<(characters.count - right)])
+                if let candidate = punctuationLayoutCorrection(for: core) {
+                    let replacement = String(characters.prefix(left)) + candidate.replacement + String(characters.suffix(right))
+                    return Correction(original: word, replacement: replacement, language: .russian)
+                }
+            }
+        }
+        return nil
+    }
+
+    /// A punctuation key can be a missing Russian letter, but only when the
+    /// entire mapped token is an exact local word. Ordinary punctuation stays.
+    private func punctuationLayoutCorrection(for word: String) -> Correction? {
+        let keys = "[];',.{}:\"<>`~"
+        guard (3...64).contains(word.count),
+              word.contains(where: { keys.contains($0) }),
+              word.unicodeScalars.contains(where: { (0x0410...0x044F).contains($0.value) || $0.value == 0x0401 || $0.value == 0x0451 }),
+              word.allSatisfy({ $0.isLetter || keys.contains($0) }),
+              !TextToken.hasProtectedCase(word) || word.filter(\.isLetter).allSatisfy(\.isUppercase) else { return nil }
+        let mapped = convert(word, to: .russian)
+        guard mapped != word, mapped.unicodeScalars.allSatisfy({
+            (0x0410...0x044F).contains($0.value) || $0.value == 0x0401 || $0.value == 0x0451
+        }), Self.russianWords.contains(mapped.lowercased()) || LocalLexicon.contains(mapped) else { return nil }
+        return Correction(original: word, replacement: mapped, language: .russian)
     }
 
     /// Repair only an exact, unambiguous word after input switched mid-token.
@@ -356,10 +393,13 @@ struct LanguageEngine {
               !TextToken.hasProtectedCase(word),
               !vocabulary.contains(normalized), !names.contains(normalized),
               !systemDictionary.contains(word, language: language) else { return nil }
-        // macOS may rank the valid word "пресет" ahead of the intended greeting.
-        // Prefer this common typo only in suggestions; never auto-apply it.
-        if language == .russian, normalized == "превет" {
-            return TextToken.applyingCase(of: word, to: "привет")
+        // These examples are hints only; they deliberately do not expand the
+        // separate, conservative automatic-correction list.
+        let preferred = language == .english
+            ? ["helo": "hello", "adress": "address", "teh": "the"]
+            : ["превет": "привет", "малако": "молоко"]
+        if let replacement = preferred[normalized] {
+            return TextToken.applyingCase(of: word, to: replacement)
         }
         // A name-like typo may be suggested, but ordinary lowercase words must
         // never be silently promoted to names.

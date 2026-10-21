@@ -6,6 +6,10 @@ assert(RuntimeCheckTarget.bundleIdentifier(arguments: ["KeySwitch", "--runtime-c
 assert(RuntimeCheckTarget.bundleIdentifier(arguments: ["KeySwitch", "--runtime-browser-check"]) == "local.keyswitch.browserlab")
 assert(RuntimeCheckTarget.bundleIdentifier(arguments: ["KeySwitch", "--runtime-check", "--runtime-browser-check"]) == "local.keyswitch.browserlab")
 
+assert(SystemDictionary.preferredSuggestion(for: "helo", candidates: ["help", "hello"]) == nil, "Equally close words need user context")
+assert(SystemDictionary.preferredSuggestion(for: "helo", candidates: ["hello", "HELP", "hello"]) == nil, "Candidate order and duplicates must not resolve ambiguity")
+assert(SystemDictionary.preferredSuggestion(for: "recieve", candidates: ["receive", "unrelated"]) == "receive", "Unique nearest candidate")
+assert(SystemDictionary.preferredSuggestion(for: "helo", candidates: ["hello world", "helo"]) == nil, "Never propose phrases or the unchanged word")
 let engine = LanguageEngine()
 
 func expect(_ actual: String?, _ expected: String, _ label: String) {
@@ -22,6 +26,17 @@ func expectNil(_ actual: Correction?, _ label: String) {
     }
 }
 
+expect(engine.correction(for: "[орошо")?.replacement, "хорошо", "Mixed punctuation key is a letter only for an exact word")
+expect(engine.correction(for: ",абушка")?.replacement, "бабушка", "Recover Russian letter on comma key")
+expect(engine.correction(for: "([орошо!)")?.replacement, "(хорошо!)", "Keep surrounding punctuation on mixed key correction")
+for token in [",привет", "[привет]", "foo_[орошо", "https://[орошо", "[орошо3"] {
+    expectNil(engine.correction(for: token), "Preserve punctuation and identifiers: \(token)")
+}
+for (word, expected, language) in [("helo", "hello", Language.english), ("adress", "address", .english), ("teh", "the", .english), ("малако", "молоко", .russian)] {
+    expect(engine.spellingSuggestion(for: word, language: language), expected, "Curated hint, not the first system guess")
+    assert(engine.spellingSuggestion(for: word.uppercased(), language: language) == nil, "Do not reinterpret acronyms")
+    assert(engine.automaticSpellingCorrection(for: word, language: language) == nil, "Hint-only typo must not enter automatic fixes")
+}
 expect(engine.correction(for: "ghbdtn")?.replacement, "привет", "English keys to Russian")
 for word in ["ktв", "kев", "леd"] {
     expect(engine.correction(for: word)?.replacement, "лев", "Mid-word source change: \(word)")

@@ -77,10 +77,7 @@ final class SystemDictionary {
             language: languageIdentifier(for: language),
             inSpellDocumentWithTag: 0
         ) ?? []
-        let maximumDistance = normalized.count <= 4 ? 1 : 2
-        guard let guess = guesses.first(where: {
-            editDistance(normalized, $0.lowercased()) <= maximumDistance
-        }) else {
+        guard let guess = Self.preferredSuggestion(for: normalized, candidates: guesses) else {
             noSuggestionCache.insert(key)
             return nil
         }
@@ -131,7 +128,24 @@ final class SystemDictionary {
         language == .russian ? "ru" : "en"
     }
 
-    private func editDistance(_ left: String, _ right: String) -> Int {
+    /// Candidate order from the system service is not a confidence score.
+    /// Return a unique closest word, never resolve a tie by arbitrary order.
+    static func preferredSuggestion(for word: String, candidates: [String]) -> String? {
+        let normalized = word.lowercased()
+        guard (3...64).contains(normalized.count) else { return nil }
+        let maximumDistance = normalized.count <= 4 ? 1 : 2
+        let ranked = Set(candidates.map { $0.lowercased() }).compactMap { candidate -> (String, Int)? in
+            guard !candidate.isEmpty, candidate != normalized, candidate.count <= 64,
+                  candidate.allSatisfy({ $0.isLetter || $0 == "-" || $0 == "'" || $0 == "’" }) else { return nil }
+            let distance = editDistance(normalized, candidate)
+            return distance <= maximumDistance ? (candidate, distance) : nil
+        }.sorted { $0.1 < $1.1 }
+        guard let best = ranked.first,
+              ranked.count == 1 || ranked[1].1 > best.1 else { return nil }
+        return best.0
+    }
+
+    private static func editDistance(_ left: String, _ right: String) -> Int {
         let lhs = Array(left)
         let rhs = Array(right)
         var previous = Array(0...rhs.count)

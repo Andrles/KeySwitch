@@ -6,6 +6,8 @@ final class QuickSettingsController: NSViewController {
     var onToggle: (() -> Void)?
     var onSettings: (() -> Void)?
     var onPermission: (() -> Void)?
+    var onRetry: (() -> Void)?
+    private var currentState = MonitorState.ready
     var onMore: (() -> Void)?
     private let status = NSTextField(wrappingLabelWithString: "")
     private let detail = NSTextField(wrappingLabelWithString: "")
@@ -41,11 +43,11 @@ final class QuickSettingsController: NSViewController {
         }
         let row = NSStackView()
         row.orientation = .horizontal; row.alignment = .centerY
-        row.addArrangedSubview(NSTextField(labelWithString: "Исправлять раскладку"))
+        row.addArrangedSubview(NSTextField(labelWithString: "Автоисправления"))
         let spacer = NSView(); spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
         row.addArrangedSubview(spacer)
         toggle.target = self; toggle.action = #selector(toggleCorrection)
-        toggle.setAccessibilityLabel("Исправлять раскладку")
+        toggle.setAccessibilityLabel("Автоисправления")
         row.addArrangedSubview(toggle)
         stack.addArrangedSubview(row)
         row.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
@@ -72,12 +74,14 @@ final class QuickSettingsController: NSViewController {
         status.stringValue = state.title
         detail.stringValue = state.detail
         toggle.state = enabled ? .on : .off
-        permission.isHidden = state != .needsPermission
+        currentState = state
+        permission.title = state == .failed ? "Повторить запуск" : "Открыть доступ macOS…"
+        permission.isHidden = state != .needsPermission && state != .failed
         view.layoutSubtreeIfNeeded()
         preferredContentSize = NSSize(width: 320, height: view.fittingSize.height)
     }
     @objc private func toggleCorrection() { onToggle?() }
     @objc private func openSettings() { onSettings?() }
-    @objc private func openPermission() { onPermission?() }
+    @objc private func openPermission() { if currentState == .failed { onRetry?() } else { onPermission?() } }
     @objc private func openMore() { onMore?() }
 }

@@ -272,6 +272,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSPopo
         quickSettings.onToggle = { [weak self] in self?.toggleEnabled() }
         quickSettings.onSettings = { [weak self] in self?.quickPopover.performClose(nil); self?.openSettings() }
         quickSettings.onPermission = { [weak self] in self?.quickPopover.performClose(nil); self?.checkPermission() }
+        quickSettings.onRetry = { [weak self] in
+            guard let self else { return }
+            self.monitor.resetRetry()
+            self.monitor.start()
+            self.refreshMenu()
+        }
         quickSettings.onMore = { [weak self] in
             self?.quickPopover.performClose(nil)
             DispatchQueue.main.async { [weak self] in self?.showContextMenu() }

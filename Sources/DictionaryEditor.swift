@@ -16,12 +16,17 @@ final class DictionaryEditor: NSStackView, NSTableViewDataSource, NSTableViewDel
     private let status = NSTextField(wrappingLabelWithString: "")
     private let remove = NSButton(title: "Удалить выбранное", target: nil, action: nil)
     private let edit = NSButton(title: "Изменить выбранное", target: nil, action: nil)
+    private let undoDelete = NSButton(title: "Отменить удаление", target: nil, action: nil)
+    private let now: () -> TimeInterval
+    private var deleted: (row: Row, expires: TimeInterval)?
+    private var undoExpiry: DispatchWorkItem?
     private var editing: Row?
     private var rows: [Row] = []
     private struct Row: Equatable { let kind: Int; let word: String; let replacement: String }
 
-    init(preferences: Preferences) {
+    init(preferences: Preferences, now: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
         self.preferences = preferences
+        self.now = now
         super.init(frame: .zero)
         orientation = .vertical; alignment = .leading; spacing = 12
         search.placeholderString = "Найти слово или исправление"; search.delegate = self
@@ -46,7 +51,10 @@ final class DictionaryEditor: NSStackView, NSTableViewDataSource, NSTableViewDel
         edit.target = self; edit.action = #selector(editSelected); edit.isEnabled = false
         buttons.addArrangedSubview(edit)
         remove.target = self; remove.action = #selector(removeSelected); remove.isEnabled = false
-        buttons.addArrangedSubview(remove); addArrangedSubview(buttons)
+        buttons.addArrangedSubview(remove)
+        undoDelete.target = self; undoDelete.action = #selector(restoreDeleted)
+        undoDelete.isHidden = true
+        buttons.addArrangedSubview(undoDelete); addArrangedSubview(buttons)
         let instruction = NSTextField(wrappingLabelWithString: "Добавьте правильное слово, запрет на исправление, собственную замену или сокращение в готовую фразу.")
         instruction.textColor = .secondaryLabelColor; addArrangedSubview(instruction)
         kind.addItems(withTitles: ["Правильное слово", "Не исправлять", "Моя замена", "Сокращение → фраза"])
@@ -175,8 +183,51 @@ final class DictionaryEditor: NSStackView, NSTableViewDataSource, NSTableViewDel
     }
     @objc private func removeSelected() {
         guard rows.indices.contains(table.selectedRow), commitPendingEdits() else { return }
-        var value = snapshot; removing(rows[table.selectedRow], from: &value); commit(value); message("Выбранное правило удалено.")
+        let row = rows[table.selectedRow]
+        var value = snapshot; removing(row, from: &value)
+        undoExpiry?.cancel()
+        deleted = (row, now() + 15)
+        commit(value)
+        undoDelete.isHidden = false
+        message("Правило удалено. Можно отменить в течение 15 секунд.")
+        let expiry = DispatchWorkItem { [weak self] in
+            self?.deleted = nil; self?.undoDelete.isHidden = true
+        }
+        undoExpiry = expiry
+        DispatchQueue.main.asyncAfter(deadline: .now() + 15, execute: expiry)
     }
+    @objc private func restoreDeleted() {
+        guard let saved = deleted else { return }
+        guard now() <= saved.expires else {
+            deleted = nil; undoDelete.isHidden = true
+            message("Время отмены истекло. Правило можно добавить заново.")
+            return
+        }
+        guard commitPendingEdits() else { return }
+        var value = snapshot
+        let row = saved.row
+        switch row.kind {
+        case 0: value.words = Array(Set(value.words).union([row.word])).sorted()
+        case 1: value.ignored = Array(Set(value.ignored).union([row.word])).sorted()
+        case 2:
+            guard value.replacements[row.word] == nil else { refuseRestore(); return }
+            value.replacements[row.word] = row.replacement
+        default:
+            guard value.snippets[row.word] == nil else { refuseRestore(); return }
+            value.snippets[row.word] = row.replacement
+        }
+        do {
+            _ = try value.encoded()
+            undoExpiry?.cancel(); deleted = nil; undoDelete.isHidden = true
+            commit(value); message("Удалённое правило восстановлено.")
+        } catch { message("Не удалось восстановить правило. " + error.localizedDescription, error: true) }
+    }
+
+    private func refuseRestore() {
+        undoExpiry?.cancel(); deleted = nil; undoDelete.isHidden = true
+        message("Для этого слова уже сохранено новое правило. Оно оставлено без изменений.", error: true)
+    }
+
     @objc private func exportFile() {
         guard commitPendingEdits() else { return }
         do {

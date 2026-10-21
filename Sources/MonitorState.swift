@@ -24,7 +24,7 @@ enum MonitorState: Equatable {
     var title: String {
         switch self {
         case .needsPermission: return "Требуется доступ"
-        case .paused: return "Исправление на паузе"
+        case .paused: return "Автоисправления на паузе"
         case .failed: return "Исправление не запустилось"
         case .ready: return "Исправление включено"
         }
@@ -35,7 +35,7 @@ enum MonitorState: Equatable {
         case .needsPermission:
             return "Разрешите Универсальный доступ в настройках macOS."
         case .paused:
-            return "Включите исправление раскладки, когда оно понадобится."
+            return "Раскладка, опечатки и сокращения на паузе. Ваши настройки сохранены."
         case .failed:
             return "Доступ есть, но исправление не работает. Повторите запуск или перезапустите KeySwitch."
         case .ready:

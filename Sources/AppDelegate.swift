@@ -1,6 +1,6 @@
 import AppKit
 
-final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSPopoverDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private lazy var statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let monitor = KeyboardMonitor.shared
     private let preferences = Preferences.shared
@@ -11,11 +11,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSPopo
     private let quickSettings = QuickSettingsController()
     private var outsideClickMonitor: Any?
     private var localClickMonitor: Any?
-    private var contextMenu: NSMenu?
-    private var toggleItem: NSMenuItem?
-    private var statusMenuOpen = false
-    private var menuStatusItem: NSMenuItem?
-    private var applicationExclusionItem: NSMenuItem?
     private var lastExternalApplication: NSRunningApplication?
     private var permissionTimer: Timer?
     private var suggestionTimer: Timer?
@@ -74,6 +69,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSPopo
                     presentationCheckPassed = presentationCheckPassed && self.quickPopover.isShown
                     presentationCheckPassed = presentationCheckPassed && self.outsideClickMonitor != nil && self.localClickMonitor != nil
                     print("Popover click check: shown=\(self.quickPopover.isShown) global=\(self.outsideClickMonitor != nil) local=\(self.localClickMonitor != nil)")
+                    presentationCheckPassed = presentationCheckPassed && NSApp.isActive && self.quickSettings.view.window?.isKeyWindow == true
+                    print("Popover activation check: active=\(NSApp.isActive) key=\(self.quickSettings.view.window?.isKeyWindow == true)")
                     if let button = self.statusItem.button, let window = button.window {
                         let icon = window.convertToScreen(button.convert(button.bounds, to: nil))
                         self.dismissQuickSettingsIfOutside(NSPoint(x: icon.midX, y: icon.midY))
@@ -88,9 +85,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSPopo
                         self.dismissQuickSettingsIfOutside(NSPoint(x: window.frame.minX - 20, y: window.frame.minY - 20))
                         print("Popover outside check: shown=\(self.quickPopover.isShown) global=\(self.outsideClickMonitor != nil) local=\(self.localClickMonitor != nil)")
                     } else { presentationCheckPassed = false }
-                    guard let menu = self.contextMenu,
-                          let index = menu.items.firstIndex(where: { $0.action == #selector(AppDelegate.openSettings) }) else { exit(1) }
-                    menu.performActionForItem(at: index)
+                    self.quickSettings.onAction?(.settings)
                     // NSPopover remains shown until its native close animation finishes.
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
                         let visible = self?.settingsController?.window?.isVisible == true
@@ -133,10 +128,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSPopo
             self.undoIgnoredWord = nil
         }
         spellingIndicator.onDismiss = { [weak self] in self?.monitor.dismissSuggestion() }
-        monitor.isInteractingWithMenu = { [weak self] in (self?.statusMenuOpen ?? false) || (self?.quickPopover.isShown ?? false) || (self?.spellingIndicator.isMenuOpen ?? false) }
+        monitor.isInteractingWithMenu = { [weak self] in (self?.quickPopover.isShown ?? false) || (self?.spellingIndicator.isMenuOpen ?? false) }
         monitor.preservesFeedbackAtPoint = { [weak self] point in
             guard let self else { return false }
-            if self.statusMenuOpen || self.quickPopover.isShown || self.spellingIndicator.isMenuOpen || self.spellingIndicator.contains(eventPoint: point) { return true }
+            if self.quickPopover.isShown || self.spellingIndicator.isMenuOpen || self.spellingIndicator.contains(eventPoint: point) { return true }
             guard let button = self.statusItem.button, let window = button.window else { return false }
             let screenPoint = NSPoint(x: point.x, y: (NSScreen.screens.first?.frame.maxY ?? 0) - point.y)
             return window.convertToScreen(button.convert(button.bounds, to: nil)).contains(screenPoint)
@@ -194,74 +189,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSPopo
         statusItem.button?.title = ""
         statusItem.button?.imagePosition = .imageOnly
         statusItem.button?.toolTip = "KeySwitch"
-        let menu = NSMenu()
-        menu.delegate = self
-        let header = NSMenuItem(title: "KeySwitch", action: nil, keyEquivalent: "")
-        header.isEnabled = false
-        menuStatusItem = header
-        header.image = menuSymbol("keyboard")
-        menu.addItem(header)
-        menu.addItem(.separator())
-        let toggle = NSMenuItem(title: "", action: #selector(toggleEnabled), keyEquivalent: "")
-        toggle.target = self
-        toggleItem = toggle
-        menu.addItem(toggle)
-        let exclusion = NSMenuItem(title: "Определяю активное приложение…",
-                                   action: #selector(toggleActiveApplicationExclusion),
-                                   keyEquivalent: "")
-        exclusion.target = self
-        applicationExclusionItem = exclusion
-        menu.addItem(exclusion)
-        let manual = NSMenuItem(title: "Горячие клавиши", action: nil, keyEquivalent: "")
-        let actions = NSMenu()
-        for command in ManualCommand.allCases {
-            let item = NSMenuItem(title: command.title, action: #selector(manualAction(_:)), keyEquivalent: "")
-            item.target = self
-            item.tag = command.rawValue
-            actions.addItem(item)
-        }
-        manual.submenu = actions
-        menu.addItem(manual)
-        menu.addItem(.separator())
-
-        let settings = NSMenuItem(title: "Настройки…",
-                                  action: #selector(openSettings),
-                                  keyEquivalent: ",")
-        settings.target = self
-        settings.image = menuSymbol("gearshape")
-        menu.addItem(settings)
-        let hide = NSMenuItem(title: "Скрыть окно",
-                              action: #selector(hideSettings),
-                              keyEquivalent: "m")
-        hide.target = self
-        hide.image = menuSymbol("menubar.rectangle")
-        menu.addItem(hide)
-        let permission = NSMenuItem(title: "Доступ macOS…",
-                                    action: #selector(checkPermission),
-                                    keyEquivalent: "")
-        permission.target = self
-        permission.image = menuSymbol("hand.raised")
-        menu.addItem(permission)
-        let updates = NSMenuItem(title: "Проверить обновления…",
-                                 action: #selector(checkForUpdates),
-                                 keyEquivalent: "")
-        updates.target = self
-        updates.image = menuSymbol("arrow.triangle.2.circlepath")
-        menu.addItem(updates)
-        let version = NSMenuItem(title: AppVersion.display,
-                                 action: nil,
-                                 keyEquivalent: "")
-        version.isEnabled = false
-        version.toolTip = "Сборка \(AppVersion.build)"
-        menu.addItem(version)
-        menu.addItem(.separator())
-        let quit = NSMenuItem(title: "Завершить KeySwitch",
-                              action: #selector(NSApplication.terminate(_:)),
-                              keyEquivalent: "q")
-        quit.target = NSApp
-        quit.image = menuSymbol("xmark.square")
-        menu.addItem(quit)
-        contextMenu = menu
         statusItem.button?.target = self
         statusItem.button?.action = #selector(statusItemClicked(_:))
         statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -270,31 +197,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSPopo
         quickPopover.animates = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         quickPopover.delegate = self
         quickSettings.onToggle = { [weak self] in self?.toggleEnabled() }
-        quickSettings.onSettings = { [weak self] in self?.quickPopover.performClose(nil); self?.openSettings() }
-        quickSettings.onPermission = { [weak self] in self?.quickPopover.performClose(nil); self?.checkPermission() }
+        quickSettings.onAction = { [weak self] action in
+            guard let self else { return }
+            self.quickPopover.performClose(nil)
+            switch action {
+            case .settings: self.openSettings()
+            case .shortcuts: self.openSettings(); self.settingsController?.showShortcuts()
+            case .permission: self.checkPermission()
+            case .updates: self.checkForUpdates()
+            case .hide: self.hideSettings()
+            case .quit: NSApp.terminate(nil)
+            case .exclusion: self.toggleActiveApplicationExclusion()
+            }
+        }
         quickSettings.onRetry = { [weak self] in
             guard let self else { return }
             self.monitor.resetRetry()
             self.monitor.start()
             self.refreshMenu()
         }
-        quickSettings.onMore = { [weak self] in
-            self?.quickPopover.performClose(nil)
-            DispatchQueue.main.async { [weak self] in self?.showContextMenu() }
-        }
     }
 
-    @objc private func statusItemClicked(_ sender: Any?) {
-        if NSApp.currentEvent?.type == .rightMouseUp { showContextMenu() }
-        else { toggleQuickSettings() }
-    }
-
-    private func showContextMenu() {
-        quickPopover.performClose(nil)
-        guard let menu = contextMenu, let button = statusItem.button else { return }
-        updateApplicationExclusionItem()
-        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.minY - 4), in: button)
-    }
+    @objc private func statusItemClicked(_ sender: Any?) { toggleQuickSettings() }
 
     private func toggleQuickSettings() {
         if quickPopover.isShown { quickPopover.performClose(nil); return }
@@ -303,9 +227,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSPopo
         monitor.invalidateContext()
         spellingIndicator.hide()
         quickSettings.refresh(state: monitor.state, enabled: preferences.enabled)
+        updateApplicationExclusionItem()
+        NSApp.activate(ignoringOtherApps: true)
         quickPopover.animates = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         quickPopover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-        if quickPopover.isShown { startOutsideClickMonitoring() }
+        if quickPopover.isShown {
+            quickSettings.focusControls()
+            startOutsideClickMonitoring()
+        }
     }
 
     private func startOutsideClickMonitoring() {
@@ -341,19 +270,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSPopo
 
     func popoverDidClose(_ notification: Notification) {
         stopOutsideClickMonitoring()
-        statusMenuOpen = false
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         stopOutsideClickMonitoring()
     }
-
-    func menuWillOpen(_ menu: NSMenu) {
-        statusMenuOpen = true
-        updateApplicationExclusionItem()
-    }
-
-    func menuDidClose(_ menu: NSMenu) { statusMenuOpen = false }
 
     @objc private func toggleEnabled() {
         preferences.enabled.toggle()
@@ -371,11 +292,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSPopo
         settingsController?.refresh()
         let state = monitor.state
         quickSettings.refresh(state: state, enabled: preferences.enabled)
-        menuStatusItem?.title = state.title
         statusItem.button?.toolTip = "KeySwitch: \(state.title)"
         statusItem.button?.setAccessibilityLabel("KeySwitch: \(state.title)")
-        toggleItem?.title = preferences.enabled ? "Поставить на паузу" : "Включить исправление"
-        toggleItem?.image = menuSymbol(preferences.enabled ? "pause.circle" : "play.circle")
         statusItem.button?.image = makeStatusImage(
             enabled: state == .ready,
             glyph: statusGlyph(for: displayedLanguage)
@@ -397,25 +315,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSPopo
     }
 
     private func updateApplicationExclusionItem() {
-        guard let item = applicationExclusionItem,
-              let application = lastExternalApplication,
-              let bundleID = application.bundleIdentifier else {
-            applicationExclusionItem?.title = "Активное приложение не определено"
-            applicationExclusionItem?.isEnabled = false
+        guard let application = lastExternalApplication, let bundleID = application.bundleIdentifier else {
+            quickSettings.refreshApplication(name: nil, excluded: false)
             return
         }
-        let name = application.localizedName ?? "Приложение"
-        let isExcluded = preferences.excludesApplication(bundleID)
-        item.title = isExcluded
-            ? "Исправлять в «\(name)»"
-            : "Не исправлять в «\(name)»"
-        item.representedObject = bundleID
-        item.image = applicationMenuIcon(application)
-        item.isEnabled = true
+        quickSettings.refreshApplication(name: application.localizedName ?? "Приложение",
+                                         excluded: preferences.excludesApplication(bundleID))
     }
 
-    @objc private func toggleActiveApplicationExclusion(_ sender: NSMenuItem) {
-        guard let bundleID = sender.representedObject as? String else { return }
+    private func toggleActiveApplicationExclusion() {
+        guard let bundleID = lastExternalApplication?.bundleIdentifier else { return }
         if preferences.excludesApplication(bundleID) {
             preferences.excludedApps.removeAll { $0 == bundleID }
         } else {
@@ -468,11 +377,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSPopo
 
     @objc private func handleHideRequest(_ notification: Notification) {
         hideSettings()
-    }
-
-    @objc private func manualAction(_ sender: NSMenuItem) {
-        guard let command = ManualCommand(rawValue: sender.tag) else { return }
-        _ = performManual(command)
     }
 
     private func performManual(_ command: ManualCommand) -> Bool {
@@ -538,14 +442,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSPopo
         return image
     }
 
-    private func menuSymbol(_ name: String) -> NSImage? {
-        NSImage(systemSymbolName: name, accessibilityDescription: nil)?
-            .withSymbolConfiguration(.init(pointSize: 14, weight: .regular))
-    }
 
-    private func applicationMenuIcon(_ application: NSRunningApplication) -> NSImage? {
-        guard let source = application.icon?.copy() as? NSImage else { return menuSymbol("app") }
-        source.size = NSSize(width: 18, height: 18)
-        return source
-    }
 }

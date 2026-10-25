@@ -126,6 +126,18 @@ expect(engine.forcedConversion("ghtdtn")?.replacement, "превет",
        "Wrong-layout typo preserves spelling during explicit conversion")
 expectNil(engine.correction(for: "ghtdtn"),
           "Wrong-layout typo must not silently perform two uncertain corrections")
+for (input, expected, language) in [("ghtdtn", "привет", Language.russian),
+                                    ("Ghtdtn", "Привет", .russian),
+                                    ("(ghtdtn,)", "(привет,)", .russian),
+                                    ("рудщ", "hello", .english)] {
+    let hint = engine.spellingCorrection(for: input, automatic: false)
+    expect(hint?.replacement, expected, "Offer a confirmed hint for a curated typo in the other layout")
+    assert(hint?.original == input && hint?.language == language, "Hint retains exact source and target language")
+    expectNil(engine.spellingCorrection(for: input, automatic: true), "Cross-layout typo always needs confirmation")
+}
+for input in ["hello", "привет", "Docker", "GitHub", "GHTDTN", "ghtDtn", "foo_ghtdtn", "https://ghtdtn", "ghtdtn@example.com", "ghtdtn3", "Fktrcfyllh"] {
+    expectNil(engine.spellingCorrection(for: input, automatic: false), "Preserve valid words, names, protected case and identifiers: \(input)")
+}
 expect(engine.correction(for: "руддщ")?.replacement, "hello", "Russian keys to English")
 expect(engine.correction(for: "ghjgecrftim")?.replacement, "пропускаешь", "Russian verb")
 expect(engine.correction(for: "bkb")?.replacement, "или", "Short Russian word")

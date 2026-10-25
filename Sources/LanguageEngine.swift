@@ -393,14 +393,7 @@ struct LanguageEngine {
               !TextToken.hasProtectedCase(word),
               !vocabulary.contains(normalized), !names.contains(normalized),
               !systemDictionary.contains(word, language: language) else { return nil }
-        // These examples are hints only; they deliberately do not expand the
-        // separate, conservative automatic-correction list.
-        let preferred = language == .english
-            ? ["helo": "hello", "adress": "address", "teh": "the"]
-            : ["превет": "привет", "малако": "молоко"]
-        if let replacement = preferred[normalized] {
-            return TextToken.applyingCase(of: word, to: replacement)
-        }
+        if let preferred = preferredSpellingSuggestion(for: word, language: language) { return preferred }
         // A name-like typo may be suggested, but ordinary lowercase words must
         // never be silently promoted to names.
         let name = word.first?.isUppercase == true ? normalizedName(word, language: language) : word
@@ -408,6 +401,16 @@ struct LanguageEngine {
             return name
         }
         return systemDictionary.suggestion(for: word, language: language)
+    }
+
+    // Hints only; shared by ordinary spelling and confirmed cross-layout hints.
+    // Never use arbitrary system guesses to combine layout and spelling changes.
+    private func preferredSpellingSuggestion(for word: String, language: Language) -> String? {
+        let preferred = language == .english
+            ? ["helo": "hello", "adress": "address", "teh": "the"]
+            : ["превет": "привет", "малако": "молоко"]
+        guard let replacement = preferred[word.lowercased()] else { return nil }
+        return TextToken.applyingCase(of: word, to: replacement)
     }
 
     private func isKnownWord(_ word: String) -> Bool {
@@ -435,6 +438,16 @@ struct LanguageEngine {
     func spellingCorrection(for token: String, automatic: Bool) -> Correction? {
         let parts = TextToken(token)
         guard !TextToken.isIdentifier(parts.word), let language = scriptLanguage(parts.word) else { return nil }
+        if !automatic, (3...64).contains(parts.word.count),
+           parts.word.allSatisfy(\.isLetter), !TextToken.hasProtectedCase(parts.word),
+           !isKnownWord(parts.word) {
+            let target = language.opposite
+            let converted = convert(parts.word, to: target)
+            if scriptLanguage(converted) == target,
+               let suggestion = preferredSpellingSuggestion(for: converted, language: target) {
+                return Correction(original: token, replacement: parts.wrapping(suggestion), language: target)
+            }
+        }
         let replacement = automatic
             ? automaticSpellingCorrection(for: parts.word, language: language)
             : spellingSuggestion(for: parts.word, language: language)

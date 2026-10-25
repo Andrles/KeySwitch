@@ -78,38 +78,56 @@ final class PopupTestDelegate: NSObject, NSApplicationDelegate {
             }
         }
         let quick = QuickSettingsController()
-        var toggled = false, settingsOpened = false, recovered = false, openedMore = false
+        var toggled = false, recovered = false
+        var actions: [QuickSettingsController.Action] = []
         quick.onToggle = { toggled = true }
-        quick.onSettings = { settingsOpened = true }
-        quick.onPermission = { recovered = true }
         quick.onRetry = { recovered = true }
-        quick.onMore = { openedMore = true }
+        quick.onAction = { actions.append($0) }
         for state in [MonitorState.ready, .paused, .needsPermission, .failed] {
-            toggled = false; settingsOpened = false; recovered = false; openedMore = false
+            toggled = false; recovered = false; actions = []
             quick.refresh(state: state, enabled: state != .paused)
-            require(quick.preferredContentSize.width == 320 && quick.preferredContentSize.height > 100, "quick settings size")
+            quick.refreshApplication(name: "TextEdit", excluded: false)
+            require(quick.preferredContentSize.width == 350 && quick.preferredContentSize.height > 100 && quick.preferredContentSize.height < 650, "quick settings size")
             quick.view.setFrameSize(quick.preferredContentSize)
             quick.view.layoutSubtreeIfNeeded()
             let views = descendants(quick.view)
+            let buttons = views.compactMap { $0 as? NSButton }
+            require(!buttons.contains { $0.title == "Ещё действия…" }, "tray actions must not hide behind a second menu")
             for control in views where control is NSControl && !control.isHiddenOrHasHiddenAncestor {
                 let frame = control.convert(control.bounds, to: quick.view)
                 require(quick.view.bounds.insetBy(dx: -1, dy: -1).contains(frame), "quick settings control clipped: \(frame)")
             }
             require(views.compactMap { $0 as? NSTextField }.contains { $0.stringValue == state.title }, "truthful quick state")
-            let recoveryTitle = state == .failed ? "Повторить запуск" : "Открыть доступ macOS…"
-            let recovery = views.compactMap { $0 as? NSButton }.first { $0.title == recoveryTitle }
-            require(recovery != nil, "recovery button title must match the failure")
-            require(recovery!.isHidden == (state != .failed && state != .needsPermission), "recovery action visibility")
-            if !recovery!.isHidden { recovery!.performClick(nil); require(recovered, "recovery action callback") }
-            views.compactMap { $0 as? NSButton }.first { $0.title == "Ещё действия…" }!.performClick(nil)
-            require(openedMore, "more action callback")
+            let retry = buttons.first { $0.title == "Повторить запуск" }!
+            require(retry.isHidden == (state != .failed), "retry visibility")
+            if !retry.isHidden { retry.performClick(nil); require(recovered, "retry callback") }
+            for action in QuickSettingsController.Action.allCases {
+                let button = buttons.first { $0.tag == action.rawValue && $0.action == NSSelectorFromString("selectAction:") }
+                require(button != nil, "every action needs a direct row")
+                button!.performClick(nil)
+                require(actions.last == action, "direct action callback")
+            }
             let toggle = views.compactMap { $0 as? NSSwitch }.first!
             require(toggle.state == (state == .paused ? .off : .on), "quick switch state")
             NSApp.sendAction(toggle.action!, to: toggle.target, from: toggle)
-            views.compactMap { $0 as? NSButton }.first { $0.title == "Открыть настройки…" }!.performClick(nil)
-            require(toggled && settingsOpened, "quick actions must work in every state")
+            require(toggled, "quick switch callback")
         }
-        require(toggled && settingsOpened, "quick actions")
+        quick.refreshApplication(name: nil, excluded: false)
+        let appButton = descendants(quick.view).compactMap { $0 as? NSButton }.first { $0.title == "Активное приложение не определено" }!
+        require(!appButton.isEnabled, "unknown application cannot be excluded")
+        quick.refreshApplication(name: "TextEdit", excluded: true)
+        require(appButton.title == "Включить для «TextEdit»" && appButton.isEnabled, "excluded application can be enabled")
+        quick.refresh(state: .ready, enabled: true)
+        for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+            quick.view.appearance = NSAppearance(named: appearance)
+            quick.view.setFrameSize(quick.preferredContentSize)
+            quick.view.layoutSubtreeIfNeeded()
+            if let image = quick.view.bitmapImageRepForCachingDisplay(in: quick.view.bounds) {
+                quick.view.cacheDisplay(in: quick.view.bounds, to: image)
+                let theme = appearance == .aqua ? "light" : "dark"
+                try? image.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: FileManager.default.currentDirectoryPath + "/build/tests/tray-\(theme).png"))
+            }
+        }
         print("Glass regressions: OK (top-right positioning, negative display coordinates, resized feedback, quick settings states/actions)")
         func checkPopupContent() {
             let panel = NSApp.windows.first { $0 is NSPanel && $0.isVisible }!

@@ -1180,6 +1180,7 @@ final class SettingsWindowController: NSWindowController,
     }
 
     func showPermissions() { showSection(.permissions) }
+    func showShortcuts() { showSection(.actions) }
 
     func showAboutAndCheckForUpdates() {
         showSection(.about)

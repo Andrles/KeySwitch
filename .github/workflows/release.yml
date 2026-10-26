@@ -19,7 +19,9 @@ jobs:
       - name: Build
         run: ./scripts/build.sh
       - name: Test installer scripts and download selection
-        run: ./scripts/test-installer.sh
+        run: |
+          ./scripts/test-installer.sh
+          ./scripts/test-terminal-installer.sh
       - name: Package
         run: ./scripts/package.sh
       - name: Store CI candidate separately from published installers

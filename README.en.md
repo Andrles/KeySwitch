@@ -31,7 +31,9 @@
 ### Terminal
 
 ```sh
-/bin/zsh -c "$(curl -fsSL https://raw.githubusercontent.com/Andrles/KeySwitch/main/scripts/install.sh)"
+installer_script="$(mktemp -t keyswitch-install)" &&
+curl -fsSL https://raw.githubusercontent.com/Andrles/KeySwitch/main/scripts/install.sh -o "$installer_script" &&
+/bin/zsh "$installer_script"
 ```
 
 The command selects a `.pkg` asset from the latest published GitHub Release,

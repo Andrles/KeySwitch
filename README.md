@@ -49,7 +49,9 @@
 ### Через Терминал
 
 ```sh
-/bin/zsh -c "$(curl -fsSL https://raw.githubusercontent.com/Andrles/KeySwitch/main/scripts/install.sh)"
+installer_script="$(mktemp -t keyswitch-install)" &&
+curl -fsSL https://raw.githubusercontent.com/Andrles/KeySwitch/main/scripts/install.sh -o "$installer_script" &&
+/bin/zsh "$installer_script"
 ```
 
 Команда выбирает установочный `.pkg` из последнего опубликованного GitHub Release,

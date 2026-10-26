@@ -1,24 +1,31 @@
 import AppKit
 
-/// Explicitly opened from the status item. Automatic spelling feedback never
-/// activates this controller or the app: it uses the nonactivating indicator.
+/// Opened explicitly from the status item. Automatic spelling feedback uses
+/// a separate nonactivating panel and never takes keyboard focus.
 final class QuickSettingsController: NSViewController {
-    enum Action: Int, CaseIterable {
-        case settings, shortcuts, permission, updates, hide, quit, exclusion
-    }
+    enum Action { case settings, permission, exclusion }
     var onToggle: (() -> Void)?
     var onRetry: (() -> Void)?
     var onAction: ((Action) -> Void)?
+
+    private let stack = NSStackView()
     private let status = NSTextField(wrappingLabelWithString: "")
     private let detail = NSTextField(wrappingLabelWithString: "")
+    private let applicationName = NSTextField(wrappingLabelWithString: "")
+    private let applicationNote = NSTextField(wrappingLabelWithString: "")
     private let toggle = NSSwitch()
-    private let retry = NSButton(title: "Повторить запуск", target: nil, action: nil)
-    private var exclusion: NSButton!
+    private let applicationToggle = NSSwitch()
+    private let recovery = NSButton(title: "", target: nil, action: nil)
+    private var state: MonitorState = .ready
+    private var enabled = true
+    private var hasApplication = false
+    private let width: CGFloat = 350
 
     override func loadView() {
         let surface = MaterialSurface(role: .popover)
         view = surface
-        let stack = NSStackView()
+        // Intrinsic widths of long labels must never expand the popover.
+        surface.widthAnchor.constraint(equalToConstant: width).isActive = true
         stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 10
         stack.translatesAutoresizingMaskIntoConstraints = false
         surface.addSubview(stack)
@@ -28,85 +35,101 @@ final class QuickSettingsController: NSViewController {
             stack.topAnchor.constraint(equalTo: surface.topAnchor, constant: 18),
             stack.bottomAnchor.constraint(equalTo: surface.bottomAnchor, constant: -16)
         ])
+        let header = NSStackView(); header.orientation = .horizontal; header.spacing = 8
+        let icon = NSImageView()
+        if let url = Bundle.main.url(forResource: "AppIcon", withExtension: "png") {
+            icon.image = NSImage(contentsOf: url)
+        } else { icon.image = NSImage(systemSymbolName: "keyboard", accessibilityDescription: nil) }
+        icon.widthAnchor.constraint(equalToConstant: 24).isActive = true
+        icon.heightAnchor.constraint(equalToConstant: 24).isActive = true
         let title = NSTextField(labelWithString: "KeySwitch")
-        title.font = .systemFont(ofSize: 18, weight: .semibold)
-        stack.addArrangedSubview(title)
-        status.font = .systemFont(ofSize: 14, weight: .semibold)
-        detail.font = .systemFont(ofSize: 12); detail.textColor = .secondaryLabelColor
-        for label in [status, detail] {
+        title.font = .systemFont(ofSize: 16, weight: .semibold)
+        header.addArrangedSubview(icon); header.addArrangedSubview(title)
+        stack.addArrangedSubview(header)
+        status.font = .systemFont(ofSize: 13, weight: .medium)
+        for label in [status, detail, applicationName, applicationNote] {
+            label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             label.setContentCompressionResistancePriority(.required, for: .vertical)
-            stack.addArrangedSubview(label)
-            label.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+            label.preferredMaxLayoutWidth = width - 36
         }
-        let row = NSStackView()
-        row.orientation = .horizontal; row.alignment = .centerY
-        let label = NSTextField(labelWithString: "Автоисправления")
-        label.font = .systemFont(ofSize: 14, weight: .medium)
-        row.addArrangedSubview(label)
-        let spacer = NSView(); spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        row.addArrangedSubview(spacer)
-        toggle.target = self; toggle.action = #selector(toggleCorrection)
-        toggle.setAccessibilityLabel("Автоисправления")
-        row.addArrangedSubview(toggle)
-        stack.addArrangedSubview(row)
-        row.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
-        retry.target = self; retry.action = #selector(retryMonitoring)
-        retry.bezelStyle = .rounded
-        stack.addArrangedSubview(retry)
-        addSeparator(to: stack)
-        exclusion = addAction(.exclusion, title: "Активное приложение не определено", symbol: "app.badge.checkmark", to: stack)
-        addSeparator(to: stack)
-        addAction(.settings, title: "Настройки…", symbol: "gearshape", to: stack)
-        addAction(.shortcuts, title: "Горячие клавиши…", symbol: "keyboard", to: stack)
-        addAction(.permission, title: "Доступ macOS…", symbol: "hand.raised", to: stack)
-        addAction(.updates, title: "Проверить обновления…", symbol: "arrow.triangle.2.circlepath", to: stack)
-        addAction(.hide, title: "Скрыть окно настроек", symbol: "menubar.rectangle", to: stack)
-        addSeparator(to: stack)
-        addAction(.quit, title: "Завершить KeySwitch", symbol: "power", to: stack)
-        let privacy = NSTextField(labelWithString: "Русский ↔ English · Текст остаётся на Mac")
-        privacy.font = .systemFont(ofSize: 11); privacy.textColor = .secondaryLabelColor
-        stack.addArrangedSubview(privacy)
-    }
-
-    @discardableResult
-    private func addAction(_ action: Action, title: String, symbol: String, to stack: NSStackView) -> NSButton {
-        let button = NSButton(title: title, target: self, action: #selector(selectAction(_:)))
-        button.tag = action.rawValue
-        button.isBordered = false; button.alignment = .left
-        button.font = .systemFont(ofSize: 13)
-        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
-            .withSymbolConfiguration(.init(pointSize: 14, weight: .regular))
-        button.imagePosition = .imageLeading
-        button.lineBreakMode = .byTruncatingMiddle
-        button.heightAnchor.constraint(greaterThanOrEqualToConstant: 26).isActive = true
-        stack.addArrangedSubview(button)
-        button.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
-        return button
-    }
-
-    private func addSeparator(to stack: NSStackView) {
+        for label in [detail, applicationName, applicationNote] {
+            label.font = .systemFont(ofSize: 12)
+            label.textColor = .secondaryLabelColor
+        }
+        applicationName.maximumNumberOfLines = 2
+        applicationName.lineBreakMode = .byTruncatingTail
+        func add(_ child: NSView) {
+            stack.addArrangedSubview(child)
+            child.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        }
+        add(status)
+        add(detail)
+        recovery.bezelStyle = .rounded
+        recovery.target = self; recovery.action = #selector(recover)
+        add(recovery)
+        add(switchRow("Автоисправления", control: toggle, action: #selector(toggleCorrection)))
         let separator = NSBox(); separator.boxType = .separator
-        stack.addArrangedSubview(separator)
-        separator.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        add(separator)
+        add(applicationName)
+        add(switchRow("Исправлять в этом приложении", control: applicationToggle, action: #selector(toggleApplication)))
+        add(applicationNote)
+        let open = NSButton(title: "Открыть приложение", target: self, action: #selector(openApplication))
+        open.bezelStyle = .rounded
+        open.font = .systemFont(ofSize: 13)
+        add(open)
+    }
+
+    private func switchRow(_ title: String, control: NSSwitch, action: Selector) -> NSView {
+        let row = NSStackView(); row.orientation = .horizontal; row.alignment = .centerY
+        let label = NSTextField(labelWithString: title)
+        label.font = .systemFont(ofSize: 13, weight: .medium)
+        label.textColor = .labelColor
+        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let spacer = NSView(); spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        row.addArrangedSubview(label); row.addArrangedSubview(spacer)
+        control.target = self; control.action = action; control.setAccessibilityLabel(title)
+        row.addArrangedSubview(control)
+        return row
     }
 
     func refresh(state: MonitorState, enabled: Bool) {
         _ = view
-        status.stringValue = state.title
-        status.textColor = state == .ready ? .systemGreen : .labelColor
-        detail.stringValue = state.detail
+        self.state = state; self.enabled = enabled
+        switch state {
+        case .ready: status.stringValue = "Работает"
+        case .paused: status.stringValue = "На паузе"
+        case .needsPermission: status.stringValue = "Не работает: нужен доступ"
+        case .failed: status.stringValue = "Не удалось запустить"
+        }
+        status.textColor = state == .paused ? .secondaryLabelColor : .labelColor
         toggle.state = enabled ? .on : .off
-        retry.isHidden = state != .failed
-        view.layoutSubtreeIfNeeded()
-        preferredContentSize = NSSize(width: 350, height: view.fittingSize.height)
+        detail.stringValue = state.detail
+        detail.isHidden = state == .ready || state == .paused
+        recovery.title = state == .needsPermission ? "Разрешить доступ…" : "Повторить запуск"
+        recovery.isHidden = state != .failed && state != .needsPermission
+        refreshApplicationNote()
+        resizeToContent()
     }
 
     func refreshApplication(name: String?, excluded: Bool) {
         _ = view
-        exclusion.title = name.map { excluded ? "Включить для «\($0)»" : "Не исправлять в «\($0)»" }
-            ?? "Активное приложение не определено"
-        exclusion.toolTip = exclusion.title
-        exclusion.isEnabled = name != nil
+        hasApplication = name?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        applicationName.stringValue = hasApplication ? name! : "Приложение не определено"
+        applicationName.toolTip = hasApplication ? name : nil
+        applicationToggle.isEnabled = hasApplication
+        applicationToggle.state = excluded ? .off : .on
+        refreshApplicationNote()
+        resizeToContent()
+    }
+
+    private func refreshApplicationNote() {
+        applicationNote.stringValue = !hasApplication ? "Откройте панель из нужного приложения." : !enabled ? "Правило сохранено. Сейчас действует общая пауза." : ""
+        applicationNote.isHidden = applicationNote.stringValue.isEmpty
+    }
+
+    private func resizeToContent() {
+        view.layoutSubtreeIfNeeded()
+        preferredContentSize = NSSize(width: width, height: stack.fittingSize.height + 34)
     }
 
     func focusControls() {
@@ -115,9 +138,10 @@ final class QuickSettingsController: NSViewController {
     }
 
     @objc private func toggleCorrection() { onToggle?() }
-    @objc private func retryMonitoring() { onRetry?() }
-    @objc private func selectAction(_ sender: NSButton) {
-        guard let action = Action(rawValue: sender.tag) else { return }
-        onAction?(action)
+    @objc private func toggleApplication() { onAction?(.exclusion) }
+    @objc private func openApplication() { onAction?(.settings) }
+    @objc private func recover() {
+        if state == .needsPermission { onAction?(.permission) }
+        else if state == .failed { onRetry?() }
     }
 }

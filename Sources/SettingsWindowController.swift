@@ -717,6 +717,10 @@ final class SettingsWindowController: NSWindowController,
         links.stack.addArrangedSubview(linksRow)
         stack.addArrangedSubview(links.view)
         stack.addArrangedSubview(footerView())
+        let quit = NSButton(title: "Завершить KeySwitch", target: self, action: #selector(quitApplication))
+        quit.bezelStyle = .rounded
+        quit.keyEquivalent = "q"
+        stack.addArrangedSubview(quit)
         renderUpdateState()
         return view
     }
@@ -1179,15 +1183,11 @@ final class SettingsWindowController: NSWindowController,
         )
     }
 
-    func showPermissions() { showSection(.permissions) }
-    func showShortcuts() { showSection(.actions) }
+    @objc private func quitApplication() { NSApp.terminate(nil) }
 
-    func showAboutAndCheckForUpdates() {
-        showSection(.about)
-        if !updateChecker.isChecking {
-            checkUpdates(updateActionButton ?? NSButton())
-        }
-    }
+    func showPermissions() { showSection(.permissions) }
+
+
 
     @discardableResult
     func commitPendingEdits() -> Bool {

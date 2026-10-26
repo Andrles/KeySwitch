@@ -199,14 +199,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         quickSettings.onToggle = { [weak self] in self?.toggleEnabled() }
         quickSettings.onAction = { [weak self] action in
             guard let self else { return }
-            self.quickPopover.performClose(nil)
             switch action {
-            case .settings: self.openSettings()
-            case .shortcuts: self.openSettings(); self.settingsController?.showShortcuts()
-            case .permission: self.checkPermission()
-            case .updates: self.checkForUpdates()
-            case .hide: self.hideSettings()
-            case .quit: NSApp.terminate(nil)
+            case .settings:
+                self.quickPopover.performClose(nil)
+                self.openSettings()
+            case .permission:
+                self.quickPopover.performClose(nil)
+                self.checkPermission()
             case .exclusion: self.toggleActiveApplicationExclusion()
             }
         }
@@ -398,11 +397,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     @objc private func checkPermission() {
         openSettings()
         settingsController?.showPermissions()
-    }
-
-    @objc private func checkForUpdates() {
-        openSettings()
-        settingsController?.showAboutAndCheckForUpdates()
     }
 
     private func showOnboarding() {

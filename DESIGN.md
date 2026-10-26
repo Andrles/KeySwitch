@@ -194,3 +194,11 @@ While the quick panel is open, local and global mouse-down monitors explicitly c
 Panel placement does not authorize an edit. The existing current-field, suffix, caret, input-source and readback checks still determine whether a replacement is allowed. The panel does not acquire key focus when it appears. Escape and double Shift retain the user's configured behavior. Feedback remains in the same top-right corner after a result changes the panel size.
 
 The surface honors Reduce Transparency and Increase Contrast; quick-panel animation honors Reduce Motion. Native AppKit controls and accessibility announcements remain in use.
+
+## Compact status panel — 26 October 2026
+
+The approved tray panel contains the KeySwitch identity, a short runtime status, the global correction switch, the previous external application's name and a positive per-application rule, and one button: “Открыть приложение”. Service navigation lives in the main window. “Завершить KeySwitch” is available in About; closing the settings window continues to hide it without quitting.
+
+The panel uses the existing MaterialSurface popover role, SF typography (16 pt identity, 13 pt controls, 12 pt supporting text), semantic primary and secondary colors, 18 pt horizontal/top padding, 16 pt bottom padding and a 10 pt stack gap. Width is constrained to 350 pt. Application names wrap to at most two lines, with their full text available in a tooltip. Fitting height is recalculated after runtime state or application changes.
+
+Normal and paused states have no permanent explanatory paragraph or privacy footer. Permission and startup errors show a specific message and contextual recovery action. The global switch represents the saved preference, while the text communicates actual runtime readiness. Application rules remain editable during a global pause, with an explicit note that they are saved for later. Missing application identity disables its switch. Both mouse buttons open the same panel; first-open activation and outside-click dismissal remain intact. Automatic spelling feedback does not activate the app.

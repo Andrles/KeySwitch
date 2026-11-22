@@ -21,9 +21,11 @@ final class KeyboardMonitor {
         let replacement: String
         let language: Language?
         var preserveInputSource = false
+        var learningCandidate: String? = nil
         let expires: TimeInterval
     }
     private var manualInputRevision = 0
+    var inputRevision: Int { manualInputRevision }
     private var feedbackGeneration = 0
     private var undoGeneration = 0
     private var lastCorrection: PendingEdit?
@@ -34,6 +36,7 @@ final class KeyboardMonitor {
     var onManualCommand: ((ManualCommand) -> Bool)?
     var onCorrection: ((Language) -> Void)?
     var onSpellingIssue: ((String, String) -> Void)?
+    var onRepeatedUndoWord: ((String) -> Void)?
     var onSuggestionResult: ((Bool) -> Void)?
     var isFeedbackVisible: (() -> Bool)?
     var isInteractingWithMenu: (() -> Bool)?
@@ -288,8 +291,9 @@ final class KeyboardMonitor {
                 (!currentWord.isEmpty && "lbhtrnjh".hasSuffix(currentWord.lowercased()) ? "test_suffix" : "other")
             inputBoundaryDiagnostic("token_" + tokenClass + "_units_" + String(currentWord.utf16.count))
         }
-        if preferences.profile(for: bundleID).layout {
-            if let correction = layoutCorrection(for: currentWord) {
+        let appProfile = preferences.profile(for: bundleID)
+        if appProfile.layout {
+            if let correction = layoutCorrection(for: currentWord, soft: appProfile.softLayout) {
                 if replaceTypedText(correction, boundaryEvent: event, feature: .layout) {
                     currentWord = ""
                     wordContext = nil
@@ -445,6 +449,10 @@ final class KeyboardMonitor {
         if !edit.preserveInputSource { selectInputLanguage(language) }
         recordCorrection(correction, context: context, boundary: "", oldLanguage: oldLanguage,
                          keepUndo: keepUndo, canUndo: true, preserveInputSource: edit.preserveInputSource)
+        if !keepUndo, let word = edit.learningCandidate,
+           preferences.recordAutomaticUndo(of: word) {
+            onRepeatedUndoWord?(word)
+        }
         currentWord = ""
         wordContext = nil
         expectedCaret = nil
@@ -500,7 +508,8 @@ final class KeyboardMonitor {
             inputDiagnostic(diagnosticID, stage: stage)
         }
         recordCorrection(correction, context: context, boundary: boundary, oldLanguage: oldLanguage,
-                         keepUndo: keepUndo, canUndo: canUndo, preserveInputSource: preserveInputSource)
+                         keepUndo: keepUndo, canUndo: canUndo, preserveInputSource: preserveInputSource,
+                         learningCandidate: feature == .layout || feature == .spelling ? correction.original : nil)
         observePostedReplacement(correction, boundary: boundary, context: context, diagnosticID: diagnosticID)
         return true
     }
@@ -566,7 +575,8 @@ final class KeyboardMonitor {
 
     private func recordCorrection(_ correction: Correction, context: TextInputContext,
                                   boundary: String, oldLanguage: Language?, keepUndo: Bool,
-                                  canUndo: Bool, preserveInputSource: Bool) {
+                                  canUndo: Bool, preserveInputSource: Bool,
+                                  learningCandidate: String? = nil) {
         if keepUndo { preferences.correctionCount += 1 }
         if keepUndo && canUndo {
             // Source changes are intentional here; save the expected new source.
@@ -583,6 +593,7 @@ final class KeyboardMonitor {
                     caret: context.selection.location - correction.original.utf16.count
                         + correction.replacement.utf16.count + boundary.utf16.count),
                 replacement: correction.original + boundary, language: oldLanguage, preserveInputSource: preserveInputSource,
+                learningCandidate: learningCandidate,
                 expires: ProcessInfo.processInfo.systemUptime + 15)
         }
         if preferences.playSound && keepUndo { NSSound.beep() }
@@ -650,8 +661,10 @@ final class KeyboardMonitor {
             read: { context.text(in: $0) })
     }
 
-    private func layoutCorrection(for token: String) -> Correction? {
-        engine.correction(for: token, ignored: preferences.ignoredWords, learned: preferences.learnedWords, replacements: preferences.wordReplacements)
+    private func layoutCorrection(for token: String, soft: Bool) -> Correction? {
+        return engine.correction(for: token, ignored: preferences.ignoredWords,
+                                 learned: preferences.learnedWords, replacements: preferences.wordReplacements,
+                                 soft: soft, preferredForms: preferences.preferredLayoutForms)
     }
 
 }

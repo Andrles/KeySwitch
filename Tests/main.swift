@@ -52,6 +52,21 @@ for word in ["ktв3", "api/ktв", "user@ktв", "foo_ktв", "https://ktв", "myKt
 }
 expectNil(engine.correction(for: "ktв", ignored: ["ktв"]), "Ignored mixed word")
 expectNil(engine.correction(for: "ktв", learned: ["ktв"]), "Learned mixed word")
+// Exact known technical spelling may recover from a mid-word layout switch.
+for (input, expected) in [("ЗostgreSQL", "PostgreSQL"), ("PostgreЫЙД", "PostgreSQL"),
+                          ("JavaЫcript", "JavaScript"), ("TypeЫcript", "TypeScript"),
+                          ("GitРub", "GitHub"), ("OpenФI", "OpenAI"),
+                          ("ChatПPT", "ChatGPT"), ("maсOS", "macOS"),
+                          ("(ЗostgreSQL!)", "(PostgreSQL!)")] {
+    expect(engine.correction(for: input)?.replacement, expected, "Exact mixed technical name: \(input)")
+}
+for word in ["myЗostgreSQL", "ЗostgreSQLClient", "postgreЫQL", "foo_ЗostgreSQL",
+             "https://ЗostgreSQL", "user@ЗostgreSQL", "GitРub2", "CustomСlass"] {
+    expectNil(engine.correction(for: word), "Protect unknown mixed identifier: \(word)")
+}
+expectNil(engine.correction(for: "ЗostgreSQL", soft: true), "Soft mode preserves mixed-case identifiers")
+expectNil(engine.correction(for: "ЗostgreSQL", ignored: ["зostgresql"]), "Ignored technical name stays")
+expectNil(engine.correction(for: "ЗostgreSQL", learned: ["зostgresql"]), "Learned technical name stays")
 var mixedCases = 0
 for (word, language) in [("лев", Language.russian), ("привет", .russian),
                           ("раскладки", .russian), ("Анастасия", .russian),
@@ -149,6 +164,13 @@ expect(engine.correction(for: "Cltkfq")?.replacement, "Сделай", "User test
 expect(engine.correction(for: "Gjxtve")?.replacement, "Почему", "User test: Почему")
 expect(engine.correction(for: "gthdjt")?.replacement, "первое", "User test: первое")
 expect(engine.correction(for: "yt")?.replacement, "не", "User test: short word не")
+expect(engine.correction(for: "ghbdtn", soft: true)?.replacement, "привет", "Soft layout still fixes clear words")
+expectNil(engine.correction(for: "yt", soft: true), "Soft layout leaves short tokens alone")
+expectNil(engine.correction(for: "d", soft: true), "Soft layout leaves single letters alone")
+expectNil(engine.correction(for: "aaaa", soft: true), "Soft layout leaves repeated characters alone")
+expectNil(engine.correction(for: "ghbdtn_1", soft: true), "Soft layout leaves code identifiers alone")
+expect(engine.correction(for: "yt", replacements: ["yt": "why"], soft: true)?.replacement,
+       "why", "Explicit user replacements remain active in soft layout")
 expect(engine.correction(for: "цщкл")?.replacement, "work", "User test: work")
 expect(engine.correction(for: "ldjhtw")?.replacement, "дворец", "User test: дворец")
 expect(engine.correction(for: "vj;tn")?.replacement, "может", "User test: punctuation key ж")
@@ -447,6 +469,57 @@ let featureSuite = "local.keyswitch.tests.features"
 let featureDefaults = UserDefaults(suiteName: featureSuite)!
 featureDefaults.removePersistentDomain(forName: featureSuite)
 let features = Preferences(defaults: featureDefaults)
+features.setPreferredLayoutForm("мы", for: ["vs", "мы"])
+assert(Preferences(defaults: featureDefaults).preferredLayoutForms == ["мы"], "Explicit choice persists")
+features.setPreferredLayoutForm("vs", for: ["vs", "мы"])
+assert(features.preferredLayoutForms == ["vs"], "Changing winner removes opposite choice")
+features.setPreferredLayoutForm("bad", for: ["vs", "мы"])
+assert(features.preferredLayoutForms == ["vs"], "Invalid choice cannot alter rule")
+features.setPreferredLayoutForm(nil, for: ["vs", "мы"])
+assert(features.preferredLayoutForms.isEmpty, "Reset restores default behavior")
+
+// Entry language is independent of automatic text correction profiles.
+assert(features.entryLanguage(for: "editor") == nil)
+features.setEntryLanguage(.russian, for: "editor")
+assert(Preferences(defaults: featureDefaults).entryLanguage(for: "editor") == .russian)
+assert(features.applicationRuleIDs.contains("editor"))
+features.setProfile(.none, for: "editor")
+assert(features.entryLanguage(for: "editor") == .russian, "Text correction profile preserves entry language")
+features.setEntryLanguage(nil, for: "editor")
+assert(features.entryLanguage(for: "editor") == nil)
+features.setEntryLanguage(.english, for: "editor")
+features.applyProfilePreset(.fullyExcluded, for: "editor")
+assert(features.entryLanguage(for: "editor") == nil, "Full exclusion clears entry language")
+features.removeApplicationRule("editor")
+assert(features.entryLanguage(for: "editor") == nil)
+assert(!features.applicationRuleIDs.contains("editor"))
+var entryPolicy = ApplicationEntryLanguagePolicy()
+var entrySelections: [Language] = []
+func activateEntry(_ pid: Int32, current: Int32? = nil, allowed: Bool = true,
+                   language: Language? = .russian) -> InputSourceSelectionResult? {
+    entryPolicy.activate(processID: pid, frontmostProcessID: current ?? pid,
+                         allowed: allowed, language: language) {
+        entrySelections.append($0)
+        return .unavailable
+    }
+}
+assert(activateEntry(10) == .unavailable, "Missing source is reported without retries")
+assert(activateEntry(10) == nil, "Duplicate activation must not override manual language changes")
+assert(entrySelections == [.russian])
+assert(activateEntry(20, current: 10) == nil, "Stale activation must not change another app")
+assert(activateEntry(20, allowed: false) == nil, "Pause, exclusions and secure input block selection")
+assert(activateEntry(20) == nil, "Re-enabling does not select in the middle of input")
+assert(activateEntry(30, language: nil) == nil)
+assert(activateEntry(10, language: .english) == .unavailable)
+assert(entrySelections == [.russian, .english], "A fresh application entry applies the selected rule")
+print("Application entry language: OK")
+
+let legacyProfileData = Data(#"{"old":{"layout":true,"spelling":false,"snippets":false}}"#.utf8)
+let legacyProfiles = try! JSONDecoder().decode([String: ApplicationProfile].self, from: legacyProfileData)
+assert(legacyProfiles["old"]?.softLayout == false, "Older app profiles default to standard layout policy")
+let softProfileData = try! JSONEncoder().encode(["ide": ApplicationProfile(layout: true, spelling: false, snippets: false, softLayout: true)])
+let restoredSoftProfile = try! JSONDecoder().decode([String: ApplicationProfile].self, from: softProfileData)
+assert(restoredSoftProfile["ide"]?.softLayout == true, "Soft layout profile persists")
 assert(!features.snippetsEnabled)
 features.snippets = ["спс": "Спасибо, хорошего дня!", "sig": "Best regards, Алексей 🙂"]
 features.snippetsEnabled = true
@@ -466,6 +539,15 @@ features.setProfile(.none, for: "editor")
 assert(!features.excludesApplication("editor") && features.snippet(for: "sig", boundary: " ", bundleID: "editor") == nil)
 features.removeApplicationRule("editor")
 assert(features.profile(for: "editor") == .all && features.applicationRuleIDs.isEmpty)
+features.applyProfilePreset(.softDeveloper, for: "ide")
+assert(features.profile(for: "ide") == ApplicationProfile(layout: true, spelling: false, snippets: false, softLayout: true))
+features.applyProfilePreset(.automaticOff, for: "ide")
+assert(features.profile(for: "ide") == .none && !features.excludesApplication("ide"), "Automatic off keeps app-level manual commands")
+features.applyProfilePreset(.fullyExcluded, for: "ide")
+assert(features.excludesApplication("ide"), "Full exclusion disables manual commands too")
+features.applyProfilePreset(.standard, for: "ide")
+assert(features.profile(for: "ide") == .all && !features.excludesApplication("ide"), "Standard preset removes full exclusion")
+features.removeApplicationRule("ide")
 features.enabled = false
 assert(features.snippet(for: "sig", boundary: " ", bundleID: "editor") == nil)
 assert(!SnippetFormat.validPhrase("\nHello") && !SnippetFormat.validPhrase("a\tb") && !SnippetFormat.validPhrase(" "))
@@ -481,6 +563,19 @@ assert(try! DictionarySnapshot.decode(phrases.encoded()) == phrases)
 let importedPhrases = try phrases.merging(DictionarySnapshot(words: [], replacements: [:], ignored: [], snippets: ["SIG": "С уважением, Алексей"]))
 assert(importedPhrases.snippets == ["sig": "С уважением, Алексей"])
 do { _ = try phrases.merging(DictionarySnapshot(words: [], replacements: [:], ignored: [], snippets: ["SIG": "One", "sig": "Two"])); assertionFailure("Case collision must throw") } catch { }
+// Repeated undo only offers learning; persistence requires explicit acceptance.
+assert(!features.recordAutomaticUndo(of: "customword"))
+assert(!features.recordAutomaticUndo(of: "CUSTOMWORD"))
+assert(features.recordAutomaticUndo(of: "customword"))
+assert(!features.ignoredWords.contains("customword"))
+assert(!Preferences(defaults: featureDefaults).recordAutomaticUndo(of: "customword"), "Undo counts are session-only")
+features.declineUndoLearningPrompt(for: "customword")
+for _ in 0..<5 { assert(!features.recordAutomaticUndo(of: "customword")) }
+features.learnAutomaticallyUndoneWord("Otherword")
+assert(Preferences(defaults: featureDefaults).ignoredWords.contains("otherword"))
+assert(!features.recordAutomaticUndo(of: "Otherword"))
+assert(!features.recordAutomaticUndo(of: "foo bar"))
+print("Undo learning acceptance, decline and session privacy: OK")
 featureDefaults.removePersistentDomain(forName: featureSuite)
 print("Application profiles / snippet policy / transfer regressions: OK")
 
@@ -631,3 +726,13 @@ assert(selectTestSource() == .unavailable)
 sourcePresent = true
 assert(selectTestSource() == .selected)
 print("Names, punctuation, dictionary recovery and input-source failures: OK")
+
+// Explicit ambiguous-pair choices must be reversible and preserve typing shape.
+expect(engine.correction(for: "VS,", preferredForms: ["мы"])?.replacement, "МЫ,", "preferred uppercase pair")
+expect(engine.correction(for: "Мы!", preferredForms: ["vs"])?.replacement, "Vs!", "preferred title pair")
+expectNil(engine.correction(for: "vs", preferredForms: ["vs"]), "winner unchanged")
+expectNil(engine.correction(for: "vs", ignored: ["vs"], preferredForms: ["мы"]), "ignore wins")
+expectNil(engine.correction(for: "vs", soft: true, preferredForms: ["мы"]), "soft mode protects short tokens")
+expectNil(engine.correction(for: "vs", preferredForms: ["vs", "мы"]), "conflicting preferences keep input")
+expect(engine.correction(for: "dr", preferredForms: ["вк"])?.replacement, "вк", "brand preference")
+print("Ambiguous-pair preferences: OK")

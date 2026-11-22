@@ -31,12 +31,30 @@ final class PopupTestDelegate: NSObject, NSApplicationDelegate {
         for appearance in [NSAppearance.Name.aqua, .darkAqua] {
             NSApp.appearance = NSAppearance(named: appearance)
             for section in 0..<8 {
+                if section == 2 {
+                    preferences.setProfile(.all, for: "local.keyswitch.ui.entry")
+                    preferences.setEntryLanguage(.english, for: "local.keyswitch.ui.entry")
+                }
                 let controller = SettingsWindowController(initialSection: section)
                 let window = controller.window!
                 window.setContentSize(NSSize(width: 760, height: 560))
                 window.orderFront(nil)
                 window.contentView!.layoutSubtreeIfNeeded()
                 let views = descendants(window.contentView!)
+                if section == 2 {
+                    let table = views.compactMap { $0 as? NSTableView }.first!
+                    let row = preferences.applicationRuleIDs.firstIndex(of: "local.keyswitch.ui.entry")!
+                    table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+                    controller.tableViewSelectionDidChange(Notification(name: NSTableView.selectionDidChangeNotification))
+                    let control = views.compactMap { $0 as? NSPopUpButton }.first {
+                        $0.accessibilityLabel() == "Язык при переходе в выбранное приложение"
+                    }!
+                    require(control.isEnabled && control.indexOfSelectedItem == 1, "entry language loads selected app rule")
+                    control.selectItem(at: 2)
+                    NSApp.sendAction(control.action!, to: control.target, from: control)
+                    require(preferences.entryLanguage(for: "local.keyswitch.ui.entry") == .russian, "entry language popup persists selection")
+                    preferences.removeApplicationRule("local.keyswitch.ui.entry")
+                }
                 for view in views where !view.isHiddenOrHasHiddenAncestor &&
                     (view is NSControl) && view.bounds.width > 0 {
                     let frame = view.convert(view.bounds, to: window.contentView)
@@ -200,6 +218,30 @@ final class PopupTestDelegate: NSObject, NSApplicationDelegate {
                 indicator.show(word: pair.0, suggestion: pair.1)
                 views.compactMap { $0 as? NSButton }.first { $0.title == "Пропустить" }!.performClick(nil)
                 require(dismissed && !indicator.isVisible, "skip must close")
+            }
+            var learned = "", declined = ""
+            indicator.onLearnWord = { learned = $0 }
+            indicator.onDeclineLearningWord = { declined = $0 }
+            for word in ["ghtdtn", String(repeating: "ж", count: 64)] {
+                indicator.showUndoLearningPrompt(word: word)
+                checkPopupContent()
+                var panel = NSApp.windows.first { $0 is NSPanel && $0.isVisible }!
+                descendants(panel.contentView!).compactMap { $0 as? NSButton }
+                    .first { $0.title == "В исключения" }!.performClick(nil)
+                require(learned == word, "learning acceptance passes exact word")
+                checkPopupContent()
+                indicator.showUndoLearningPrompt(word: word)
+                panel = NSApp.windows.first { $0 is NSPanel && $0.isVisible }!
+                descendants(panel.contentView!).compactMap { $0 as? NSButton }
+                    .first { $0.title == "Не спрашивать сейчас" }!.performClick(nil)
+                require(declined == word, "learning decline passes exact word")
+                checkPopupContent()
+                indicator.show(word: "превет", suggestion: "привет")
+                panel = NSApp.windows.first { $0 is NSPanel && $0.isVisible }!
+                require(descendants(panel.contentView!).compactMap { $0 as? NSButton }
+                    .contains { $0.title == "Заменить" && $0.action == NSSelectorFromString("apply") },
+                    "normal suggestion restores button action after learning prompt")
+                indicator.hide()
             }
         }
         var failureReported = false

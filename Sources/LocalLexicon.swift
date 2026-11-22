@@ -3,7 +3,7 @@ import Foundation
 /// Small offline supplement for common vocabulary, proper names and technical terms.
 /// These entries protect correct input as well as identify exact layout candidates.
 enum LocalLexicon {
-    static let words: Set<String> = Set("""
+    private static let entries: [String] = """
     3D AMD API ASCII Apple B12 BMW Bluetooth COVID-19 CPU ChatGPT Docker GPU GitHub Google H2O HTTP HTTPS I'm
     IT-разработка Intel JSON JavaScript Kubernetes Li Linux MINI Microsoft NFC O'Reilly OpenAI PostgreSQL ProMax
     Python RAM RTX4090 Ryzen SEAT SQL SSD Straße Swift TANK Tesla Toyota TypeScript URL USB UTF WiFi Windows XML
@@ -37,7 +37,10 @@ enum LocalLexicon {
     функция химия хлеб цапля что-нибудь школа шоссе щука экземпляр экспонента электрификация электричество
     электрон энциклопедия юла яблоко ёж ёлка
     директор
-    """.lowercased().split(whereSeparator: \.isWhitespace).map(String.init))
+    """.split(whereSeparator: \.isWhitespace).map(String.init)
+    static let words = Set(entries.map { $0.lowercased() })
+    // Retain exact published spellings for narrowly scoped mixed-layout recovery.
+    static let exactCaseWords = Set(entries)
     static let names: Set<String> = Set("""
     Aleksey Alexander Alexandr Alexei Alexey Alice Amelia Anderson Andrew Ann Anna Anne Anthony Anton Ava Benjamin Björn
     Boris Brown Catherine Charlotte Chen Daniel David Dmitri Dmitry Dostoevsky Einstein Elena Elizabeth Emma

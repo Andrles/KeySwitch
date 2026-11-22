@@ -113,6 +113,8 @@ final class SettingsWindowController: NSWindowController,
     private let appTable = NSTableView()
     private var profileControls: [NSButton] = []
     private var selectedProfileID: String?
+    private let profilePresetControl = NSPopUpButton()
+    private let entryLanguageControl = NSPopUpButton()
     private var selectedSection: SettingsSection = .general
     private var sidebarButtons: [SettingsSection: SidebarButton] = [:]
 
@@ -293,6 +295,7 @@ final class SettingsWindowController: NSWindowController,
             let editor = DictionaryEditor(preferences: preferences)
             editor.onRulesChanged = { [weak self] in self?.monitor.invalidateContext() }
             dictionaryEditor = editor
+            stack.addArrangedSubview(buildAmbiguousChoices())
             stack.addArrangedSubview(editor)
             stack.addArrangedSubview(footerView())
             sectionView = view
@@ -492,15 +495,30 @@ final class SettingsWindowController: NSWindowController,
         tableCard.stack.addArrangedSubview(controls)
         stack.addArrangedSubview(tableCard.view)
 
-        let profile = card(height: 176)
+        let profile = card(height: 210)
         profile.stack.addArrangedSubview(label("Автоматические функции выбранного приложения", size: 13))
+        profilePresetControl.removeAllItems()
+        profilePresetControl.addItems(withTitles: ApplicationProfilePreset.allCases.map(\.title))
+        profilePresetControl.target = self
+        profilePresetControl.action = #selector(applyProfilePreset)
+        profilePresetControl.isEnabled = false
+        profilePresetControl.setAccessibilityLabel("Готовый профиль исправлений для приложения")
+        profile.stack.addArrangedSubview(profilePresetControl)
+        profile.stack.addArrangedSubview(label("Язык при переходе в приложение", size: 13))
+        entryLanguageControl.removeAllItems()
+        entryLanguageControl.addItems(withTitles: ["Не менять", "English", "Русский"])
+        entryLanguageControl.target = self
+        entryLanguageControl.action = #selector(changeEntryLanguage)
+        entryLanguageControl.setAccessibilityLabel("Язык при переходе в выбранное приложение")
+        profile.stack.addArrangedSubview(entryLanguageControl)
+        profile.stack.addArrangedSubview(label("Только при переходе в приложение. Во время работы язык можно менять вручную.", size: 12, color: UIStyle.secondaryText, wrapping: true))
         profileControls = []
         for (index, title) in ["Исправлять раскладку", "Проверять орфографию", "Разворачивать сокращения"].enumerated() {
             let button = NSButton(checkboxWithTitle: title, target: self, action: #selector(changeProfile))
             button.tag = index; button.isEnabled = false
             profileControls.append(button); profile.stack.addArrangedSubview(button)
         }
-        profile.stack.addArrangedSubview(label("Выберите приложение выше. Частичные правила оставляют ручные команды доступными. Полное исключение блокирует и их.", size: 12, color: UIStyle.secondaryText, wrapping: true))
+        profile.stack.addArrangedSubview(label("Мягкий режим исправляет только слова от 3 букв и пропускает повторяющиеся символы и кодовые идентификаторы. Пользовательские замены продолжают работать. «Автоисправления выключены» сохраняет ручные команды; полное исключение выключает и их.", size: 12, color: UIStyle.secondaryText, wrapping: true))
         stack.addArrangedSubview(profile.view)
         updateProfileControls()
         let info = card(height: 86)
@@ -613,6 +631,32 @@ final class SettingsWindowController: NSWindowController,
 
         stack.addArrangedSubview(footerView())
         return view
+    }
+
+    private func buildAmbiguousChoices() -> NSView {
+        let box = NSStackView()
+        box.orientation = .vertical
+        box.alignment = .leading
+        box.spacing = 10
+        box.addArrangedSubview(label("Похожие слова в двух раскладках", size: 15, weight: .semibold))
+        box.addArrangedSubview(label("Выберите, какой вариант оставлять при автоматическом исправлении. Исключения и мягкий режим сохраняют приоритет. «Без предпочтения» убирает предпочтение и возвращает обычные правила.", size: 12, color: UIStyle.secondaryText, wrapping: true))
+        for (index, pair) in LanguageEngine.ambiguousPairs.enumerated() {
+            let control = NSSegmentedControl(labels: ["Без предпочтения"] + pair, trackingMode: .selectOne,
+                                             target: self, action: #selector(changeAmbiguousChoice(_:)))
+            control.tag = index
+            let chosen = pair.enumerated().filter { preferences.preferredLayoutForms.contains($0.element) }
+            control.selectedSegment = chosen.count == 1 ? chosen[0].offset + 1 : 0
+            control.setAccessibilityLabel("Предпочтение для \(pair.joined(separator: " / "))")
+            box.addArrangedSubview(control)
+        }
+        return box
+    }
+
+    @objc private func changeAmbiguousChoice(_ sender: NSSegmentedControl) {
+        guard LanguageEngine.ambiguousPairs.indices.contains(sender.tag), (0...2).contains(sender.selectedSegment) else { return }
+        let pair = LanguageEngine.ambiguousPairs[sender.tag]
+        preferences.setPreferredLayoutForm(sender.selectedSegment == 0 ? nil : pair[sender.selectedSegment - 1], for: pair)
+        monitor.invalidateContext()
     }
 
     @objc private func openDictionarySection() { showSection(.dictionary) }
@@ -1014,22 +1058,56 @@ final class SettingsWindowController: NSWindowController,
 
     private func profileDescription(_ bundleID: String) -> String {
         let profile = preferences.profile(for: bundleID)
-        let names = [(profile.layout, "раскладка"), (profile.spelling, "орфография"), (profile.snippets, "сокращения")].filter { $0.0 }.map { $0.1 }
+        let names = [(profile.layout, profile.softLayout ? "мягкая раскладка" : "раскладка"), (profile.spelling, "орфография"), (profile.snippets, "сокращения")].filter { $0.0 }.map { $0.1 }
         return names.isEmpty ? "выключено; ручные команды доступны" : names.joined(separator: ", ")
     }
     private func updateProfileControls() {
         let ids = preferences.applicationRuleIDs
         let id = ids.indices.contains(appTable.selectedRow) ? ids[appTable.selectedRow] : nil
         selectedProfileID = id
+        let fullyExcluded = id.map { preferences.excludesApplication($0) } ?? false
         for button in profileControls {
-            button.isEnabled = id != nil
+            button.isEnabled = id != nil && !fullyExcluded
             button.state = id.map { preferences.profile(for: $0).allows(CorrectionFeature(rawValue: button.tag)!) } == true ? .on : .off
         }
+        let current = id.map { preferences.profile(for: $0) }
+        let preset = fullyExcluded
+            ? ApplicationProfilePreset.fullyExcluded
+            : ApplicationProfilePreset.allCases.first { $0 != .fullyExcluded && $0.profile == current }
+        if let preset {
+            profilePresetControl.selectItem(at: preset.rawValue)
+        } else {
+            profilePresetControl.selectItem(at: -1)
+        }
+        profilePresetControl.isEnabled = id != nil
+        entryLanguageControl.isEnabled = id != nil && !fullyExcluded
+        let language = id.flatMap { preferences.entryLanguage(for: $0) }
+        entryLanguageControl.selectItem(at: language == .english ? 1 : language == .russian ? 2 : 0)
+    }
+    @objc private func changeEntryLanguage(_ sender: NSPopUpButton) {
+        guard let id = selectedProfileID else { return }
+        let language: Language? = sender.indexOfSelectedItem == 1 ? .english :
+            sender.indexOfSelectedItem == 2 ? .russian : nil
+        preferences.setEntryLanguage(language, for: id)
+    }
+
+    @objc private func applyProfilePreset(_ sender: NSPopUpButton) {
+        guard let id = selectedProfileID,
+              let preset = ApplicationProfilePreset(rawValue: sender.indexOfSelectedItem) else { return }
+        preferences.applyProfilePreset(preset, for: id)
+        monitor.invalidateContext()
+        refresh()
     }
     @objc private func changeProfile(_ sender: NSButton) {
         guard let id = selectedProfileID, let feature = CorrectionFeature(rawValue: sender.tag) else { return }
         var profile = preferences.profile(for: id)
-        switch feature { case .layout: profile.layout = sender.state == .on; case .spelling: profile.spelling = sender.state == .on; case .snippets: profile.snippets = sender.state == .on }
+        switch feature {
+        case .layout:
+            profile.layout = sender.state == .on
+            profile.softLayout = false
+        case .spelling: profile.spelling = sender.state == .on
+        case .snippets: profile.snippets = sender.state == .on
+        }
         preferences.setProfile(profile, for: id); monitor.invalidateContext(); refresh()
     }
     func tableViewSelectionDidChange(_ notification: Notification) {
@@ -1051,7 +1129,7 @@ final class SettingsWindowController: NSWindowController,
             testResultLabel?.stringValue = "Введите одно короткое слово (до 64 символов)."
             return
         }
-        if let correction = LanguageEngine().correction(for: text, ignored: preferences.ignoredWords, learned: preferences.learnedWords, replacements: preferences.wordReplacements) {
+        if let correction = LanguageEngine().correction(for: text, ignored: preferences.ignoredWords, learned: preferences.learnedWords, replacements: preferences.wordReplacements, preferredForms: preferences.preferredLayoutForms) {
             testResultLabel?.stringValue = "\(text) → \(correction.replacement). Это локальный пример, а не проверка внешнего редактора."
         } else {
             testResultLabel?.stringValue = "Замена не требуется. Попробуйте ghbdtn или руддщ."

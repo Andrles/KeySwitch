@@ -9,6 +9,8 @@ final class SpellingIndicator: NSObject, NSMenuDelegate {
     private var word = ""
     private var dismissal: DispatchWorkItem?
     private let actions = NSStackView()
+    private var primaryActionButton: NSButton?
+    private var secondaryActionButton: NSButton?
     private let more = NSPopUpButton(frame: .zero, pullsDown: true)
     private let undoButton = NSButton(title: "Отменить исключение", target: nil, action: nil)
     private var targetScreen: NSScreen?
@@ -18,6 +20,8 @@ final class SpellingIndicator: NSObject, NSMenuDelegate {
     var onApply: (() -> Void)?
     var onIgnore: ((String) -> Void)?
     var onDismiss: (() -> Void)?
+    var onLearnWord: ((String) -> Void)?
+    var onDeclineLearningWord: ((String) -> Void)?
 
     override init() {
         panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 330, height: 170),
@@ -69,6 +73,7 @@ final class SpellingIndicator: NSObject, NSMenuDelegate {
         replace.bezelStyle = .rounded; replace.keyEquivalent = ""
         let skip = NSButton(title: "Пропустить", target: self, action: #selector(dismiss))
         skip.bezelStyle = .rounded; skip.isBordered = false
+        primaryActionButton = replace; secondaryActionButton = skip
         actions.addArrangedSubview(replace); actions.addArrangedSubview(skip)
         stack.addArrangedSubview(actions)
         stack.addArrangedSubview(hint)
@@ -91,8 +96,28 @@ final class SpellingIndicator: NSObject, NSMenuDelegate {
             ? "Esc — пропустить. Заменить можно до следующего ввода."
             : "⇧ ⇧ — заменить · Esc — пропустить. До следующего ввода."
         label.stringValue = "\(word) → \(suggestion)"
+        primaryActionButton?.title = "Заменить"
+        primaryActionButton?.action = #selector(apply)
+        secondaryActionButton?.title = "Пропустить"
+        secondaryActionButton?.action = #selector(dismiss)
         layout()
         announce(label.stringValue + ". " + hint.stringValue)
+    }
+
+    func showUndoLearningPrompt(word: String, screen: NSScreen? = nil) {
+        dismissal?.cancel(); dismissal = nil
+        self.word = word; targetScreen = screen
+        title.stringValue = "Запомнить это слово?"
+        title.isHidden = false; more.isHidden = true; undoButton.isHidden = true
+        label.stringValue = "Вы несколько раз вернули «\(word)» отменой KeySwitch. Добавить слово в исключения?"
+        hint.stringValue = "KeySwitch перестанет менять его автоматически."
+        primaryActionButton?.title = "В исключения"
+        primaryActionButton?.action = #selector(learnWord)
+        secondaryActionButton?.title = "Не спрашивать сейчас"
+        secondaryActionButton?.action = #selector(declineLearning)
+        actions.isHidden = false
+        layout()
+        announce(label.stringValue + " " + hint.stringValue)
     }
 
     private func layout() {
@@ -133,6 +158,28 @@ final class SpellingIndicator: NSObject, NSMenuDelegate {
     }
 
     @objc private func apply() { onApply?() }
+
+    @objc private func learnWord() {
+        onLearnWord?(word)
+        label.stringValue = "«\(word)» добавлено в исключения"
+        hint.stringValue = "KeySwitch больше не будет исправлять это слово автоматически."
+        title.isHidden = true; more.isHidden = true; actions.isHidden = true
+        resizeToContent(); announce(label.stringValue)
+        let work = DispatchWorkItem { [weak self] in self?.hide() }
+        dismissal?.cancel(); dismissal = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
+    }
+
+    @objc private func declineLearning() {
+        onDeclineLearningWord?(word)
+        label.stringValue = "Хорошо, не напомню в этой сессии"
+        hint.stringValue = "Автоисправление для этого слова останется включено."
+        title.isHidden = true; more.isHidden = true; actions.isHidden = true
+        resizeToContent(); announce(label.stringValue)
+        let work = DispatchWorkItem { [weak self] in self?.hide() }
+        dismissal?.cancel(); dismissal = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
+    }
 
     func showResult(applied: Bool) {
         label.stringValue = applied ? "Слово заменено" : "Не удалось подтвердить замену"

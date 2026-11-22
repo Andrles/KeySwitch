@@ -35,12 +35,12 @@ print installed > "$FIXTURE_RESULT"
     result, opened, package = (root / name for name in ['installed', 'opened', 'package-path'])
     environment = dict(os.environ, PATH=f"{root}:{os.environ['PATH']}",
                        FIXTURE_RESULT=str(result), FIXTURE_OPEN=str(opened), FIXTURE_PACKAGE=str(package))
-    for version, mode in [('3.2.0', 'success'), ('3.5.1', 'success'),
-                          ('3.5.1', 'missing_package'), ('3.5.1', 'install_failure'),
-                          ('3.5.1', 'wrong_host'), ('3.5.1', 'invalid_tag')]:
+    for version, mode in [('3.2.0', 'success'), ('3.6.0', 'success'),
+                          ('3.6.0', 'missing_package'), ('3.6.0', 'install_failure'),
+                          ('3.6.0', 'wrong_host'), ('3.6.0', 'invalid_tag')]:
         for path in [result, opened, package]: path.unlink(missing_ok=True)
         url = f'https://github.com/Andrles/KeySwitch/releases/tag/v{version}'
-        if mode == 'wrong_host': url = 'https://example.invalid/releases/tag/v3.5.1'
+        if mode == 'wrong_host': url = 'https://example.invalid/releases/tag/v3.6.0'
         if mode == 'invalid_tag': url += '/unexpected'
         run = subprocess.run(['/bin/zsh', str(script)], env=dict(environment,
             FIXTURE_URL=url, FIXTURE_MODE=mode, FIXTURE_VERSION=version), capture_output=True, text=True)

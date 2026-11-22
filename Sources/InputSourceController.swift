@@ -70,3 +70,18 @@ enum InputSourceSelection {
         return currentLanguage() == language ? .selected : .unconfirmed
     }
 }
+
+/// Applies an entry rule once per foreground application transition, never while typing.
+struct ApplicationEntryLanguagePolicy {
+    private var lastProcessID: Int32?
+
+    mutating func activate(processID: Int32, frontmostProcessID: Int32?,
+                           allowed: Bool, language: Language?,
+                           select: (Language) -> InputSourceSelectionResult) -> InputSourceSelectionResult? {
+        guard processID == frontmostProcessID else { return nil }
+        guard processID != lastProcessID else { return nil }
+        lastProcessID = processID
+        guard allowed, let language else { return nil }
+        return select(language)
+    }
+}

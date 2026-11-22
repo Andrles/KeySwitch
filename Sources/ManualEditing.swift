@@ -115,10 +115,65 @@ struct ApplicationProfile: Codable, Equatable {
     var layout: Bool
     var spelling: Bool
     var snippets: Bool
+    var softLayout: Bool
+
+    init(layout: Bool, spelling: Bool, snippets: Bool, softLayout: Bool = false) {
+        self.layout = layout
+        self.spelling = spelling
+        self.snippets = snippets
+        self.softLayout = softLayout
+    }
+
+    private enum CodingKeys: String, CodingKey { case layout, spelling, snippets, softLayout }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        layout = try values.decode(Bool.self, forKey: .layout)
+        spelling = try values.decode(Bool.self, forKey: .spelling)
+        snippets = try values.decode(Bool.self, forKey: .snippets)
+        softLayout = try values.decodeIfPresent(Bool.self, forKey: .softLayout) ?? false
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(layout, forKey: .layout)
+        try values.encode(spelling, forKey: .spelling)
+        try values.encode(snippets, forKey: .snippets)
+        try values.encode(softLayout, forKey: .softLayout)
+    }
+
     static let all = Self(layout: true, spelling: true, snippets: true)
     static let none = Self(layout: false, spelling: false, snippets: false)
     func allows(_ feature: CorrectionFeature) -> Bool {
         switch feature { case .layout: return layout; case .spelling: return spelling; case .snippets: return snippets }
+    }
+}
+
+enum ApplicationProfilePreset: Int, CaseIterable {
+    case standard
+    case developerLayoutOnly
+    case automaticOff
+    case softDeveloper
+    case fullyExcluded
+
+    var title: String {
+        switch self {
+        case .standard: return "Обычный"
+        case .developerLayoutOnly: return "IDE/терминал — только раскладка"
+        case .automaticOff: return "Отключить автоисправления"
+        case .softDeveloper: return "Мягкий режим — IDE/терминал"
+        case .fullyExcluded: return "Полное исключение приложения"
+        }
+    }
+
+    var profile: ApplicationProfile {
+        switch self {
+        case .standard: return .all
+        case .developerLayoutOnly: return ApplicationProfile(layout: true, spelling: false, snippets: false)
+        case .automaticOff: return ApplicationProfile(layout: false, spelling: false, snippets: false)
+        case .softDeveloper: return ApplicationProfile(layout: true, spelling: false, snippets: false, softLayout: true)
+        case .fullyExcluded: return .none
+        }
     }
 }
 

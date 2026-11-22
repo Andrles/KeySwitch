@@ -1,7 +1,7 @@
 <div align="center">
   <img src="docs/assets/banner.svg" alt="KeySwitch — automatic keyboard layout switching for macOS" width="100%">
 
-  [![Version](https://img.shields.io/badge/version-3.5.1-6D5DFB)](CHANGELOG.md)
+  [![Version](https://img.shields.io/badge/version-3.6.0-6D5DFB)](CHANGELOG.md)
   [![Downloads](https://img.shields.io/github/downloads/Andrles/KeySwitch/total?label=downloads&logo=github&color=2563EB)](https://github.com/Andrles/KeySwitch/releases)
 
   **A native Russian ↔ English keyboard layout assistant for macOS.**
@@ -17,6 +17,9 @@
 - Recognizes automotive brands and model identifiers such as `BMW X3`, `Audi Q7`, and `Mazda CX-5`.
 - Offers spelling checks and optional correction of obvious typos.
 - Converts the current word with a double press of Shift.
+- Supports an entry language and correction profile per app, including a soft mode for IDEs and terminals.
+- Offers explicit preferences for ambiguous pairs: `vs / мы`, `dr / вк`, `nu / тг`.
+- Suggests adding a word to exclusions after repeated undo actions, with explicit confirmation.
 - Adds the currently active app to exclusions directly from the menu bar.
 - Runs in the menu bar without keeping a permanent Dock window.
 - Shows distinct menu-bar symbols for ready, paused, and permission/error states.

@@ -1,9 +1,12 @@
 import AppKit
+import Carbon
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private lazy var statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let monitor = KeyboardMonitor.shared
     private let preferences = Preferences.shared
+    private var entryLanguagePolicy = ApplicationEntryLanguagePolicy()
+    private var entryActivationGeneration = 0
     private let updateChecker = UpdateChecker.shared
     private lazy var spellingIndicator = SpellingIndicator()
     private var settingsController: SettingsWindowController?
@@ -126,6 +129,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             guard let self, self.undoIgnoredWord == word.lowercased() else { return }
             self.preferences.ignoredWords.remove(word.lowercased())
             self.undoIgnoredWord = nil
+        }
+        spellingIndicator.onLearnWord = { [weak self] word in
+            self?.preferences.learnAutomaticallyUndoneWord(word)
+        }
+        spellingIndicator.onDeclineLearningWord = { [weak self] word in
+            self?.preferences.declineUndoLearningPrompt(for: word)
+        }
+        monitor.onRepeatedUndoWord = { [weak self] word in
+            guard let self else { return }
+            self.spellingIndicator.showUndoLearningPrompt(word: word, screen: TextInputContext.current()?.screen)
         }
         spellingIndicator.onDismiss = { [weak self] in self?.monitor.dismissSuggestion() }
         monitor.isInteractingWithMenu = { [weak self] in (self?.quickPopover.isShown ?? false) || (self?.spellingIndicator.isMenuOpen ?? false) }
@@ -305,6 +318,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         monitor.invalidateContext()
         spellingIndicator.hide()
         captureExternalApplication(application)
+        entryActivationGeneration += 1
+        guard let application, let bundleID = application.bundleIdentifier else { return }
+        let generation = entryActivationGeneration
+        let inputRevision = monitor.inputRevision
+        let apply = { [weak self] in
+            guard let self, self.entryActivationGeneration == generation,
+                  self.monitor.inputRevision == inputRevision else { return }
+            let allowed = self.preferences.enabled && !self.preferences.excludesApplication(bundleID) &&
+                bundleID != Bundle.main.bundleIdentifier && !IsSecureEventInputEnabled()
+            _ = self.entryLanguagePolicy.activate(
+                processID: application.processIdentifier,
+                frontmostProcessID: NSWorkspace.shared.frontmostApplication?.processIdentifier,
+                allowed: allowed, language: self.preferences.entryLanguage(for: bundleID),
+                select: InputSourceController.select(language:))
+        }
+        if NSWorkspace.shared.frontmostApplication?.processIdentifier == application.processIdentifier {
+            apply()
+        } else {
+            // Workspace can announce activation before its foreground cache updates.
+            // Give it one main-queue turn, canceling if input or another activation intervenes.
+            DispatchQueue.main.async(execute: apply)
+        }
     }
 
     private func captureExternalApplication(_ application: NSRunningApplication?) {

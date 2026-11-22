@@ -68,6 +68,8 @@ final class Preferences {
         return Preferences()
     }()
     let defaults: UserDefaults
+    private var automaticUndoCounts: [String: Int] = [:]
+    private var dismissedUndoLearningWords: Set<String> = []
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -134,7 +136,23 @@ final class Preferences {
         set { if let data = try? JSONEncoder().encode(newValue) { defaults.set(data, forKey: "applicationProfiles") } }
     }
 
-    var applicationRuleIDs: [String] { Array(Set(excludedApps + applicationProfiles.keys)).sorted() }
+    private var applicationEntryLanguages: [String: String] {
+        get { defaults.dictionary(forKey: "applicationEntryLanguages") as? [String: String] ?? [:] }
+        set { defaults.set(newValue, forKey: "applicationEntryLanguages") }
+    }
+
+    func entryLanguage(for bundleID: String) -> Language? {
+        applicationEntryLanguages[bundleID].flatMap(Language.init(rawValue:))
+    }
+
+    func setEntryLanguage(_ language: Language?, for bundleID: String) {
+        guard !bundleID.isEmpty else { return }
+        applicationEntryLanguages[bundleID] = language?.rawValue
+    }
+
+    var applicationRuleIDs: [String] {
+        Array(Set(excludedApps + applicationProfiles.keys + applicationEntryLanguages.keys)).sorted()
+    }
 
     func profile(for bundleID: String) -> ApplicationProfile {
         excludesApplication(bundleID) ? .none : applicationProfiles[bundleID] ?? .all
@@ -145,9 +163,19 @@ final class Preferences {
         applicationProfiles[bundleID] = profile
     }
 
+    func applyProfilePreset(_ preset: ApplicationProfilePreset, for bundleID: String) {
+        if preset == .fullyExcluded {
+            removeApplicationRule(bundleID)
+            if !excludedApps.contains(bundleID) { excludedApps.append(bundleID) }
+        } else {
+            setProfile(preset.profile, for: bundleID)
+        }
+    }
+
     func removeApplicationRule(_ bundleID: String) {
         excludedApps.removeAll { $0 == bundleID }
         applicationProfiles.removeValue(forKey: bundleID)
+        applicationEntryLanguages.removeValue(forKey: bundleID)
     }
 
     var snippetsEnabled: Bool {
@@ -223,6 +251,44 @@ final class Preferences {
     var learnedWords: Set<String> {
         get { Set(defaults.stringArray(forKey: "learnedWords") ?? []) }
         set { defaults.set(Array(newValue).sorted(), forKey: "learnedWords") }
+    }
+
+    /// Counts only confirmed KeySwitch undo actions in memory; never stores an input history.
+    func recordAutomaticUndo(of word: String) -> Bool {
+        let key = TextToken(word).word.lowercased()
+        guard UserDictionaryFormat.validWord(key),
+              !ignoredWords.contains(key),
+              !dismissedUndoLearningWords.contains(key) else { return false }
+        let count = min(3, (automaticUndoCounts[key] ?? 0) + 1)
+        automaticUndoCounts[key] = count
+        return count >= 3
+    }
+
+    func learnAutomaticallyUndoneWord(_ word: String) {
+        let key = TextToken(word).word.lowercased()
+        guard UserDictionaryFormat.validWord(key) else { return }
+        ignoredWords.insert(key)
+        automaticUndoCounts.removeValue(forKey: key)
+    }
+
+    func declineUndoLearningPrompt(for word: String) {
+        let key = TextToken(word).word.lowercased()
+        guard UserDictionaryFormat.validWord(key) else { return }
+        dismissedUndoLearningWords.insert(key)
+        automaticUndoCounts.removeValue(forKey: key)
+    }
+
+    /// Explicit language choices only; never stores an input history.
+    var preferredLayoutForms: Set<String> {
+        get { Set(defaults.stringArray(forKey: "preferredLayoutForms") ?? []) }
+        set { defaults.set(Array(newValue).sorted(), forKey: "preferredLayoutForms") }
+    }
+
+    func setPreferredLayoutForm(_ winner: String?, for pair: [String]) {
+        guard LanguageEngine.ambiguousPairs.contains(pair), winner == nil || pair.contains(winner!) else { return }
+        var choices = preferredLayoutForms.subtracting(pair)
+        if let winner { choices.insert(winner) }
+        preferredLayoutForms = choices
     }
 
     var wordReplacements: [String: String] {

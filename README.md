@@ -7,7 +7,7 @@
 [![macOS 13+](https://img.shields.io/badge/macOS-13%2B-111827?logo=apple)](#системные-требования)
 [![Swift](https://img.shields.io/badge/Swift-native-F05138?logo=swift&logoColor=white)](#сборка-из-исходного-кода)
 [![Local processing](https://img.shields.io/badge/privacy-local_processing-16A34A)](#приватность)
-[![Version](https://img.shields.io/badge/version-3.5.1-6D5DFB)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-3.6.0-6D5DFB)](CHANGELOG.md)
 [![Download](https://img.shields.io/badge/download-latest_release-2563EB?logo=github)](https://github.com/Andrles/KeySwitch/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/Andrles/KeySwitch/total?label=downloads&logo=github&color=2563EB)](https://github.com/Andrles/KeySwitch/releases)
 
@@ -24,6 +24,9 @@
 - Использует системные офлайн-словари и встроенный словарь имён.
 - Проверяет орфографию и умеет исправлять очевидные опечатки.
 - Конвертирует текущее слово двойным нажатием Shift. Сразу после исправления двойной Shift восстанавливает оригинал, пока контекст ввода не изменился (до 15 секунд).
+- Позволяет выбрать язык при переходе в приложение и готовый профиль исправлений, включая мягкий режим для IDE/терминала.
+- Даёт выбрать предпочтительную форму для `vs / мы`, `dr / вк`, `nu / тг`.
+- После повторных отмен предлагает добавить слово в исключения — только с подтверждением.
 - Позволяет исключать приложения прямо из меню в строке меню.
 - Показывает приложения-исключения с названиями и иконками.
 - Работает в строке меню и не требует постоянного окна в Dock.
@@ -40,7 +43,7 @@
 | `руддщ` | `hello` |
 | `vj;tn` | `может` |
 | `Ьщысщц` | `Moscow` |
-| `Alexandr` | подсказка `Alexander`; принятие двойным Shift |
+| `ghtdtn` | подсказка `привет`; принятие двойным Shift |
 
 ## Установка
 
